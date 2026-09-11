@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller / Build
+*.manifest
+*.spec
+
+# PyTest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# PySide / Qt
+*.qmlc
+*.jsc
+
+# Environments & Secrets
+.env
+.env.local
+.env.*.local
+*.secret
+secrets.json
+
+# Local Databases & Data
+*.db
+*.sqlite
+*.sqlite3
+data/
+storage/*.db
+storage/*.sqlite
+
+# Model caches & weights
+models/*.onnx
+models/*.bin
+.cache/
+huggingface/
+
+# Logs
+*.log
+logs/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
