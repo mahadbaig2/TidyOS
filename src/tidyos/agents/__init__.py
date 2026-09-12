@@ -15,6 +15,7 @@ from tidyos.agents.search_agent import (
     StructuredQuery,
 )
 from tidyos.agents.graph import create_safety_graph
+from tidyos.agents.search_graph import create_search_graph, SearchGraphState
 
 __all__ = [
     "TidyOSState",
@@ -26,5 +27,7 @@ __all__ = [
     "SearchResult",
     "StructuredQuery",
     "create_safety_graph",
+    "create_search_graph",
+    "SearchGraphState",
 ]
 
