@@ -137,6 +137,18 @@ CREATE TABLE IF NOT EXISTS file_embeddings (
     UNIQUE(file_path, sha256_hash, embedding_model)
 );
 
+-- Full-Text Search (FTS5) for keyword, phrase, and identifier retrieval
+CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
+    file_path UNINDEXED,
+    filename,
+    title,
+    summary,
+    topics,
+    entities,
+    extracted_text,
+    tokenize = 'unicode61'
+);
+
 -- Schema metadata table for tracking version
 CREATE TABLE IF NOT EXISTS schema_info (
     version INTEGER PRIMARY KEY,
