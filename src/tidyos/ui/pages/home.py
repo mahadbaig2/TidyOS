@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -141,50 +142,13 @@ class HomePage(QWidget):
 
         layout.addLayout(metrics_layout)
 
-        # Protected Project Highlight Card (Demonstrates Safety Intelligence)
-        protected_card = QFrame()
-        protected_card.setObjectName("CardRaised")
-        protected_card.setStyleSheet(
-            f"""
-            QFrame#CardRaised {{
-                background-color: {COLORS.surface_raised};
-                border: 1px solid {COLORS.protected_border};
-                border-radius: {RADII.lg}px;
-                padding: {SPACING.lg}px;
-            }}
-            """
-        )
-        p_layout = QVBoxLayout(protected_card)
-        p_layout.setContentsMargins(18, 16, 18, 16)
-        p_layout.setSpacing(8)
+        # Protected Projects Dynamic Section
+        self.protected_container = QWidget()
+        self.protected_layout = QVBoxLayout(self.protected_container)
+        self.protected_layout.setContentsMargins(0, 0, 0, 0)
+        self.protected_layout.setSpacing(10)
+        layout.addWidget(self.protected_container)
 
-        p_header = QHBoxLayout()
-        p_badge = StatusBadge("🛡️ Protected Project", variant="protected")
-        p_header.addWidget(p_badge)
-
-        p_repo_name = QLabel("mahad-ai-portfolio")
-        p_repo_name.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {COLORS.text_primary};")
-        p_header.addWidget(p_repo_name)
-
-        p_type = QLabel("Next.js + Git repository")
-        p_type.setStyleSheet(f"font-size: 12px; color: {COLORS.text_muted};")
-        p_header.addWidget(p_type)
-
-        p_header.addStretch()
-
-        index_status = StatusBadge("Indexed for Search ✓", variant="neutral")
-        p_header.addWidget(index_status)
-        p_layout.addLayout(p_header)
-
-        p_desc = QLabel(
-            "TidyOS detected markers: package.json, next.config.ts, tsconfig.json, .git/. "
-            "Internal project files are protected from automated moves and renames."
-        )
-        p_desc.setWordWrap(True)
-        p_desc.setStyleSheet(f"font-size: 12px; color: {COLORS.text_secondary};")
-        p_layout.addWidget(p_desc)
-
-        layout.addWidget(protected_card)
 
         # Recent Activity Section
         section_header = QHBoxLayout()
@@ -271,8 +235,103 @@ class HomePage(QWidget):
             else:
                 self.subtitle.setText("No files indexed yet. Add a managed folder in Settings to begin.")
 
+            # Refresh protected project visual cards
+            self.refresh_protected_projects()
+
         except Exception as e:
             logger.error(f"Failed to refresh dashboard metrics: {e}")
+
+    def refresh_protected_projects(self):
+        """Render detected protected projects dynamically."""
+        while self.protected_layout.count():
+            item = self.protected_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        protected_roots = self.repository.list_protected_roots()
+
+        if not protected_roots:
+            card = QFrame()
+            card.setObjectName("CardRaised")
+            card.setStyleSheet(
+                f"""
+                QFrame#CardRaised {{
+                    background-color: {COLORS.surface_raised};
+                    border: 1px solid {COLORS.border_subtle};
+                    border-radius: {RADII.lg}px;
+                    padding: {SPACING.md}px;
+                }}
+                """
+            )
+            c_layout = QVBoxLayout(card)
+            c_layout.setContentsMargins(18, 14, 18, 14)
+            c_layout.setSpacing(6)
+
+            hdr = QHBoxLayout()
+            b = StatusBadge("🛡️ Project Boundary Protection", variant="neutral")
+            hdr.addWidget(b)
+            hdr.addStretch()
+            c_layout.addLayout(hdr)
+
+            desc = QLabel(
+                "TidyOS automatically detects and protects software repositories "
+                "(Next.js, Python, Git, Node). When codebases are detected, their internal "
+                "files are strictly protected from automated moves and renames."
+            )
+            desc.setWordWrap(True)
+            desc.setStyleSheet(f"font-size: 12px; color: {COLORS.text_secondary};")
+            c_layout.addWidget(desc)
+            self.protected_layout.addWidget(card)
+            return
+
+        for prot in protected_roots:
+            card = QFrame()
+            card.setObjectName("CardRaised")
+            card.setStyleSheet(
+                f"""
+                QFrame#CardRaised {{
+                    background-color: {COLORS.surface_raised};
+                    border: 1px solid {COLORS.protected_border};
+                    border-radius: {RADII.lg}px;
+                    padding: {SPACING.lg}px;
+                }}
+                """
+            )
+            p_layout = QVBoxLayout(card)
+            p_layout.setContentsMargins(18, 16, 18, 16)
+            p_layout.setSpacing(8)
+
+            p_header = QHBoxLayout()
+            p_badge = StatusBadge("🛡️ Protected Project", variant="protected")
+            p_header.addWidget(p_badge)
+
+            p_repo_name = QLabel(Path(prot.path).name)
+            p_repo_name.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {COLORS.text_primary};")
+            p_header.addWidget(p_repo_name)
+
+            type_label = prot.project_type.replace("_", " ").title()
+            p_type = QLabel(f"{type_label} repository")
+            p_type.setStyleSheet(f"font-size: 12px; color: {COLORS.text_muted};")
+            p_header.addWidget(p_type)
+
+            p_header.addStretch()
+
+            prot_badge = StatusBadge("Protected Structure ✓", variant="protected")
+            p_header.addWidget(prot_badge)
+            p_layout.addLayout(p_header)
+
+            markers_str = ", ".join(prot.detected_markers) if prot.detected_markers else "project root markers"
+            p_desc = QLabel(
+                f"TidyOS detected markers: {markers_str}. "
+                "Internal project files are protected from automated moves and renames."
+            )
+            p_desc.setWordWrap(True)
+            p_desc.setStyleSheet(f"font-size: 12px; color: {COLORS.text_secondary};")
+            p_layout.addWidget(p_desc)
+
+            self.protected_layout.addWidget(card)
+
 
     def show_scan_progress(self, current_file: str, files_count: int, dirs_count: int):
         """Update scan progress banner."""
