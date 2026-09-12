@@ -9,6 +9,11 @@ from tidyos.agents.librarian import (
     FileUnderstanding,
     LibrarianAgent,
 )
+from tidyos.agents.search_agent import (
+    SearchAgent,
+    SearchResult,
+    StructuredQuery,
+)
 from tidyos.agents.graph import create_safety_graph
 
 __all__ = [
@@ -17,6 +22,9 @@ __all__ = [
     "GuardianExplanation",
     "FileUnderstanding",
     "LibrarianAgent",
+    "SearchAgent",
+    "SearchResult",
+    "StructuredQuery",
     "create_safety_graph",
 ]
 
