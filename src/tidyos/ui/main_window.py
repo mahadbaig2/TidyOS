@@ -18,6 +18,7 @@ from PySide6.QtCore import Qt, QThreadPool
 from tidyos.config import config
 from tidyos.storage import StorageRepository, ManagedRoot
 from tidyos.workers.scanner_worker import ScannerWorker
+from tidyos.workers.librarian_worker import LibrarianWorker
 from tidyos.ui.theme.tokens import COLORS
 from tidyos.ui.components.sidebar import Sidebar
 from tidyos.ui.pages import (
@@ -66,6 +67,7 @@ class MainWindow(QMainWindow):
         self.repository = repository or StorageRepository(config.database_path)
         self.thread_pool = QThreadPool.globalInstance()
         self.active_worker: Optional[ScannerWorker] = None
+        self.active_librarian_worker: Optional[LibrarianWorker] = None
 
         # Root container
         root_widget = QWidget()
@@ -151,6 +153,33 @@ class MainWindow(QMainWindow):
         self.settings_page.show_status_message(
             f"Scan completed: {total_files:,} files and {total_dirs:,} folders indexed in {duration_s:.1f}s."
         )
+        # Automatically trigger background Librarian semantic understanding for discovered files
+        if total_files > 0:
+            self.start_understanding()
+
+    def start_understanding(self, target_files: Optional[List[str]] = None):
+        """Start non-blocking Librarian semantic analysis across files."""
+        logger.info("Initiating background Librarian semantic understanding...")
+        worker = LibrarianWorker(self.repository, target_files=target_files)
+        self.active_librarian_worker = worker
+
+        worker.signals.progress.connect(self.home_page.show_understanding_progress)
+        worker.signals.batch_completed.connect(self._on_understanding_completed)
+        worker.signals.error.connect(self._on_understanding_error)
+
+        self.thread_pool.start(worker)
+
+    def _on_understanding_completed(self, processed: int, cached: int, duration_s: float):
+        """Handle completion of background Librarian analysis."""
+        logger.info(f"Librarian analysis finished: {processed} files ({cached} cached) in {duration_s:.2f}s")
+        self.home_page.hide_understanding_progress(processed, cached, duration_s)
+        self.settings_page.show_status_message(
+            f"Librarian analyzed {processed:,} files ({cached} cached) in {duration_s:.1f}s."
+        )
+
+    def _on_understanding_error(self, file_path: str, error_message: str):
+        """Handle background Librarian error without crashing."""
+        logger.warning(f"Librarian reported error for '{file_path}': {error_message}")
 
     def _on_scan_failed(self, root_path: str, error_message: str):
         """Handle background scan failure signal without crashing."""

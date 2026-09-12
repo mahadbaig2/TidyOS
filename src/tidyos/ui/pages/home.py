@@ -131,11 +131,13 @@ class HomePage(QWidget):
         metrics_layout.setSpacing(16)
 
         self.card_indexed = MetricCard("0", "Files indexed", "Across 0 approved roots")
+        self.card_understood = MetricCard("0", "Files understood", "Semantic index ready")
         self.card_organized = MetricCard("0", "Directories mapped", "Preserved structure")
         self.card_protected = MetricCard("0", "Protected projects", "Codebases untouched")
         self.card_review = MetricCard("0", "Need review", "Awaiting confirmation")
 
         metrics_layout.addWidget(self.card_indexed)
+        metrics_layout.addWidget(self.card_understood)
         metrics_layout.addWidget(self.card_organized)
         metrics_layout.addWidget(self.card_protected)
         metrics_layout.addWidget(self.card_review)
@@ -148,7 +150,6 @@ class HomePage(QWidget):
         self.protected_layout.setContentsMargins(0, 0, 0, 0)
         self.protected_layout.setSpacing(10)
         layout.addWidget(self.protected_container)
-
 
         # Recent Activity Section
         section_header = QHBoxLayout()
@@ -174,7 +175,91 @@ class HomePage(QWidget):
         self.act_layout.setContentsMargins(16, 12, 16, 12)
         self.act_layout.setSpacing(12)
 
-        # Activity item 1
+        layout.addWidget(self.activity_card)
+        layout.addStretch()
+
+        scroll.setWidget(container)
+        main_layout.addWidget(scroll)
+
+        # Load real database metrics and activity
+        self.refresh_metrics()
+        self.refresh_recent_activity()
+
+    def refresh_metrics(self):
+        """Update dashboard metric cards from database."""
+        try:
+            stats = self.repository.get_statistics()
+            total_files = stats.get("total_files", 0)
+            total_roots = stats.get("total_roots", 0)
+            total_dirs = stats.get("total_directories", 0)
+            total_prot = stats.get("total_protected", 0)
+            total_review = stats.get("total_review", 0)
+            total_understood = stats.get("total_understood", 0)
+
+            self.card_indexed.set_value(f"{total_files:,}")
+            self.card_indexed.set_hint(f"Across {total_roots} approved root(s)")
+
+            self.card_understood.set_value(f"{total_understood:,}")
+            self.card_understood.set_hint("Semantic metadata ready")
+
+            self.card_organized.set_value(f"{total_dirs:,}")
+            self.card_organized.set_hint(f"{total_dirs} directories mapped")
+
+            self.card_protected.set_value(f"{total_prot}")
+            self.card_protected.set_hint("Codebases untouched")
+
+            self.card_review.set_value(f"{total_review}")
+            self.card_review.set_hint("Awaiting confirmation")
+
+            if total_files > 0:
+                self.subtitle.setText(
+                    f"{total_files:,} files indexed ({total_understood:,} understood) across {total_roots} managed folder(s)."
+                )
+            else:
+                self.subtitle.setText("No files indexed yet. Add a managed folder in Settings to begin.")
+
+            # Refresh protected project visual cards
+            self.refresh_protected_projects()
+
+        except Exception as e:
+            logger.error(f"Failed to refresh dashboard metrics: {e}")
+
+    def refresh_recent_activity(self):
+        """Render recent activity items dynamically from database."""
+        while self.act_layout.count():
+            item = self.act_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+            elif item.layout() is not None:
+                sub = item.layout()
+                while sub.count():
+                    si = sub.takeAt(0)
+                    if si.widget():
+                        si.widget().deleteLater()
+
+        recent_understandings = self.repository.list_file_understandings(limit=5)
+        if recent_understandings:
+            for i, u in enumerate(recent_understandings):
+                if i > 0:
+                    sep = QFrame()
+                    sep.setFrameShape(QFrame.Shape.HLine)
+                    sep.setStyleSheet(f"border-top: 1px solid {COLORS.border_subtle};")
+                    self.act_layout.addWidget(sep)
+
+                p = Path(u.file_path)
+                conf_pct = int(u.confidence * 100)
+                row = self._create_activity_row(
+                    icon="🧠",
+                    filename=p.name,
+                    path_change=f"Understood: {u.document_type.upper()} | '{u.title}'",
+                    time_ago=f"{u.analysis_source}",
+                    confidence=f"{conf_pct}% confidence",
+                )
+                self.act_layout.addLayout(row)
+            return
+
+        # Default demonstration rows if no files analyzed yet
         item1 = self._create_activity_row(
             icon="✓",
             filename="Vercel_Invoice_Sep_2026.pdf",
@@ -189,7 +274,6 @@ class HomePage(QWidget):
         sep1.setStyleSheet(f"border-top: 1px solid {COLORS.border_subtle};")
         self.act_layout.addWidget(sep1)
 
-        # Activity item 2
         item2 = self._create_activity_row(
             icon="✓",
             filename="FastAPI_CORS_Error.png",
@@ -198,48 +282,6 @@ class HomePage(QWidget):
             confidence="92% confidence",
         )
         self.act_layout.addLayout(item2)
-
-        layout.addWidget(self.activity_card)
-        layout.addStretch()
-
-        scroll.setWidget(container)
-        main_layout.addWidget(scroll)
-
-        # Load real database metrics
-        self.refresh_metrics()
-
-    def refresh_metrics(self):
-        """Update dashboard metric cards from database."""
-        try:
-            stats = self.repository.get_statistics()
-            total_files = stats.get("total_files", 0)
-            total_roots = stats.get("total_roots", 0)
-            total_dirs = stats.get("total_directories", 0)
-            total_prot = stats.get("total_protected", 0)
-            total_review = stats.get("total_review", 0)
-
-            self.card_indexed.set_value(f"{total_files:,}")
-            self.card_indexed.set_hint(f"Across {total_roots} approved root(s)")
-
-            self.card_organized.set_value(f"{total_dirs:,}")
-            self.card_organized.set_hint(f"{total_dirs} directories mapped")
-
-            self.card_protected.set_value(f"{total_prot}")
-            self.card_protected.set_hint("Codebases untouched")
-
-            self.card_review.set_value(f"{total_review}")
-            self.card_review.set_hint("Awaiting confirmation")
-
-            if total_files > 0:
-                self.subtitle.setText(f"{total_files:,} files indexed across {total_roots} managed folder(s).")
-            else:
-                self.subtitle.setText("No files indexed yet. Add a managed folder in Settings to begin.")
-
-            # Refresh protected project visual cards
-            self.refresh_protected_projects()
-
-        except Exception as e:
-            logger.error(f"Failed to refresh dashboard metrics: {e}")
 
     def refresh_protected_projects(self):
         """Render detected protected projects dynamically."""
@@ -346,6 +388,31 @@ class HomePage(QWidget):
         self.refresh_metrics()
         self.subtitle.setText(
             f"Scan completed: {total_files:,} files and {total_dirs:,} folders indexed in {duration_s:.1f}s."
+        )
+
+    def show_understanding_progress(
+        self, current_idx: int, total: int, filename: str, doc_type: str
+    ):
+        """Update Librarian semantic analysis progress banner."""
+        self.progress_frame.setVisible(True)
+        if total > 0:
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(current_idx)
+        else:
+            self.progress_bar.setRange(0, 0)
+        self.progress_label.setText(
+            f"Librarian analyzing ({current_idx}/{total}): {filename} [{doc_type.upper()}]"
+        )
+
+    def hide_understanding_progress(
+        self, processed: int, cached: int, duration_s: float
+    ):
+        """Hide progress bar and update metrics after Librarian completes."""
+        self.progress_frame.setVisible(False)
+        self.refresh_metrics()
+        self.refresh_recent_activity()
+        self.subtitle.setText(
+            f"Librarian analyzed {processed:,} file(s) ({cached} cached) in {duration_s:.1f}s."
         )
 
     def _create_activity_row(
