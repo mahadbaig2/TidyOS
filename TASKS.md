@@ -81,29 +81,29 @@ Do not skip milestone gates.
 # Phase 2 — Safety and Structured Directory Intelligence
 
 ## M2.1 Project Root Detector
-- [ ] P2.1.1 Detect `.git`
-- [ ] P2.1.2 Detect Node/package-managed projects
-- [ ] P2.1.3 Detect Next.js
-- [ ] P2.1.4 Detect Python projects
-- [ ] P2.1.5 Detect Docker/project tooling
-- [ ] P2.1.6 Propagate protection to descendants
-- [ ] P2.1.7 Record project type and reason
+- [x] P2.1.1 Detect `.git`
+- [x] P2.1.2 Detect Node/package-managed projects
+- [x] P2.1.3 Detect Next.js
+- [x] P2.1.4 Detect Python projects
+- [x] P2.1.5 Detect Docker/project tooling
+- [x] P2.1.6 Propagate protection to descendants
+- [x] P2.1.7 Record project type and reason
 
 ## M2.2 Deterministic SafetyPolicy
-- [ ] P2.2.1 Deny operations outside managed roots
-- [ ] P2.2.2 Deny source mutations inside protected roots
-- [ ] P2.2.3 Deny destinations inside protected roots
-- [ ] P2.2.4 Prevent overwrites
-- [ ] P2.2.5 Validate Windows filenames
-- [ ] P2.2.6 Handle path length/collision cases
-- [ ] P2.2.7 Fail closed on uncertainty
+- [x] P2.2.1 Deny operations outside managed roots
+- [x] P2.2.2 Deny source mutations inside protected roots
+- [x] P2.2.3 Deny destinations inside protected roots
+- [x] P2.2.4 Prevent overwrites
+- [x] P2.2.5 Validate Windows filenames
+- [x] P2.2.6 Handle path length/collision cases
+- [x] P2.2.7 Fail closed on uncertainty
 
 ## M2.3 Guardian Agent
-- [ ] P2.3.1 Define Guardian structured schema
-- [ ] P2.3.2 Create LangGraph Guardian node
-- [ ] P2.3.3 Feed deterministic detector results into Guardian
-- [ ] P2.3.4 Produce human-readable protection explanation
-- [ ] P2.3.5 Ensure Guardian cannot override SafetyPolicy
+- [x] P2.3.1 Define Guardian structured schema
+- [x] P2.3.2 Create LangGraph Guardian node
+- [x] P2.3.3 Feed deterministic detector results into Guardian
+- [x] P2.3.4 Produce human-readable protection explanation
+- [x] P2.3.5 Ensure Guardian cannot override SafetyPolicy
 
 ### Gate M2
 Create a test folder containing:
@@ -112,11 +112,12 @@ Create a test folder containing:
 - a Python repository
 
 Pass criteria:
-- [ ] loose files marked eligible
-- [ ] Next.js root and descendants protected
-- [ ] Python root and descendants protected
-- [ ] attempted protected mutation is rejected
-- [ ] UI clearly shows protected project badge
+- [x] loose files marked eligible
+- [x] Next.js root and descendants protected
+- [x] Python root and descendants protected
+- [x] attempted protected mutation is rejected
+- [x] UI clearly shows protected project badge
+
 
 **Do not continue to autonomous file movement until this gate passes.**
 
