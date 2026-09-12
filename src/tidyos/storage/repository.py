@@ -705,3 +705,124 @@ class StorageRepository:
             )
         return results
 
+    # -------------------------------------------------------------------------
+    # Vector Embeddings (Local Semantic Search)
+    # -------------------------------------------------------------------------
+
+    def save_file_embedding(
+        self,
+        file_path: str,
+        sha256_hash: str,
+        embedding_model: str,
+        vector: Any,
+        semantic_representation: str,
+    ) -> int:
+        """Persist or replace local vector embedding for a file."""
+        import numpy as np
+
+        conn = self.get_connection()
+        now = utc_now_iso()
+        vec_arr = np.asarray(vector, dtype=np.float32)
+        blob = vec_arr.tobytes()
+        dim = int(vec_arr.shape[0])
+
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO file_embeddings (
+                    file_path, sha256_hash, embedding_model, embedding_dimension,
+                    embedding_blob, semantic_representation, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(file_path, sha256_hash, embedding_model) DO UPDATE SET
+                    embedding_blob = excluded.embedding_blob,
+                    embedding_dimension = excluded.embedding_dimension,
+                    semantic_representation = excluded.semantic_representation,
+                    created_at = excluded.created_at
+                """,
+                (
+                    str(file_path),
+                    sha256_hash,
+                    embedding_model,
+                    dim,
+                    blob,
+                    semantic_representation,
+                    now,
+                ),
+            )
+            return cur.lastrowid
+
+    def get_file_embedding(
+        self,
+        file_path: str,
+        sha256_hash: Optional[str] = None,
+        embedding_model: Optional[str] = None,
+    ) -> Optional[Any]:
+        """Fetch cached embedding vector for a file."""
+        import numpy as np
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        query = "SELECT embedding_blob, embedding_dimension FROM file_embeddings WHERE file_path = ?"
+        params: List[Any] = [str(file_path)]
+
+        if sha256_hash:
+            query += " AND sha256_hash = ?"
+            params.append(sha256_hash)
+        if embedding_model:
+            query += " AND embedding_model = ?"
+            params.append(embedding_model)
+
+        query += " ORDER BY id DESC LIMIT 1"
+        cur.execute(query, tuple(params))
+        row = cur.fetchone()
+        if not row:
+            return None
+
+        blob = row["embedding_blob"]
+        dim = row["embedding_dimension"]
+        return np.frombuffer(blob, dtype=np.float32).copy()
+
+    def list_all_embeddings(
+        self, embedding_model: Optional[str] = None
+    ) -> tuple[List[str], Any]:
+        """Fetch all stored embeddings as a tuple of (file_paths, numpy_matrix)."""
+        import numpy as np
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        if embedding_model:
+            cur.execute(
+                """
+                SELECT file_path, embedding_blob, embedding_dimension
+                FROM file_embeddings
+                WHERE embedding_model = ?
+                ORDER BY id ASC
+                """,
+                (embedding_model,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT file_path, embedding_blob, embedding_dimension
+                FROM file_embeddings
+                ORDER BY id ASC
+                """
+            )
+
+        rows = cur.fetchall()
+        if not rows:
+            return [], np.empty((0, 384), dtype=np.float32)
+
+        file_paths = [r["file_path"] for r in rows]
+        vectors = [
+            np.frombuffer(r["embedding_blob"], dtype=np.float32)
+            for r in rows
+        ]
+        matrix = np.vstack(vectors).astype(np.float32)
+        return file_paths, matrix
+
+

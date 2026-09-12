@@ -124,6 +124,19 @@ CREATE TABLE IF NOT EXISTS file_understandings (
     UNIQUE(file_path, sha256_hash)
 );
 
+-- Local vector embeddings for semantic retrieval
+CREATE TABLE IF NOT EXISTS file_embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path TEXT NOT NULL,
+    sha256_hash TEXT NOT NULL,
+    embedding_model TEXT NOT NULL,
+    embedding_dimension INTEGER NOT NULL DEFAULT 384,
+    embedding_blob BLOB NOT NULL,
+    semantic_representation TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(file_path, sha256_hash, embedding_model)
+);
+
 -- Schema metadata table for tracking version
 CREATE TABLE IF NOT EXISTS schema_info (
     version INTEGER PRIMARY KEY,
@@ -142,6 +155,9 @@ CREATE INDEX IF NOT EXISTS idx_protected_roots_path ON protected_roots(path);
 CREATE INDEX IF NOT EXISTS idx_file_understandings_path ON file_understandings(file_path);
 CREATE INDEX IF NOT EXISTS idx_file_understandings_hash ON file_understandings(sha256_hash);
 CREATE INDEX IF NOT EXISTS idx_file_understandings_type ON file_understandings(document_type);
+CREATE INDEX IF NOT EXISTS idx_file_embeddings_path ON file_embeddings(file_path);
+CREATE INDEX IF NOT EXISTS idx_file_embeddings_hash ON file_embeddings(sha256_hash);
+CREATE INDEX IF NOT EXISTS idx_file_embeddings_model ON file_embeddings(embedding_model);
 """
 
 
