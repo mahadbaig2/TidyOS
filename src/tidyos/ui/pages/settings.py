@@ -17,20 +17,69 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFileDialog,
     QMessageBox,
+    QComboBox,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QObject, QRunnable, QThreadPool
 
 from tidyos.config import config
 from tidyos.storage import StorageRepository, RootValidationError, ManagedRoot
 from tidyos.ui.theme.tokens import COLORS, RADII, SPACING, TYPOGRAPHY
 from tidyos.ui.components.badge import StatusBadge
+from tidyos.tools.openai_client import OpenAIClient, AIProviderConfig, get_active_ai_config
 from tidyos.logging_config import get_logger
 
 logger = get_logger("ui.pages.settings")
 
+MODEL_PRESETS = {
+    "openai": [
+        "gpt-4o-mini",
+        "gpt-4o",
+        "gpt-4-turbo",
+        "gpt-3.5-turbo",
+    ],
+    "openrouter": [
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3.5-sonnet",
+        "meta-llama/llama-3.3-70b-instruct",
+        "google/gemini-2.0-flash-001",
+        "deepseek/deepseek-chat",
+    ],
+}
+
+
+class TestConnectionSignals(QObject):
+    """Signals for background AI provider connection testing."""
+    finished = Signal(bool, str)
+
+
+class TestConnectionWorker(QRunnable):
+    """Background worker verifying provider connectivity and model reachability."""
+
+    def __init__(self, provider: str, api_key: str, model: str):
+        super().__init__()
+        self.provider = provider
+        self.api_key = api_key
+        self.model = model
+        self.signals = TestConnectionSignals()
+        self.setAutoDelete(True)
+
+    def run(self):
+        try:
+            base_url = "https://openrouter.ai/api/v1" if self.provider == "openrouter" else None
+            client = OpenAIClient(
+                api_key=self.api_key,
+                model=self.model,
+                provider=self.provider,
+                base_url=base_url,
+            )
+            success, msg = client.test_connection()
+            self.signals.finished.emit(success, msg)
+        except Exception as e:
+            self.signals.finished.emit(False, f"Connection error: {str(e)[:40]}")
+
 
 class SettingsPage(QWidget):
-    """Settings page allowing configuration of managed roots, exclusions, and thresholds."""
+    """Settings page allowing configuration of managed roots, exclusions, thresholds, and AI provider."""
 
     scan_requested = Signal(object)  # Emits ManagedRoot or None (for all)
     roots_changed = Signal()  # Emitted when roots are added or removed
@@ -172,17 +221,17 @@ class SettingsPage(QWidget):
         s2_box.addWidget(auto_card)
         layout.addLayout(s2_box)
 
-        # Section 3: Semantic Search & Embedding Runtime
+        # Section 3: AI Intelligence & Provider Configuration
         s3_box = QVBoxLayout()
-        s3_box.setSpacing(8)
+        s3_box.setSpacing(10)
 
-        s3_title = QLabel("Search & Embedding Engine")
+        s3_title = QLabel("AI Provider & Intelligence Engine")
         s3_title.setStyleSheet(f"font-size: 15px; font-weight: 600; color: {COLORS.text_primary};")
         s3_box.addWidget(s3_title)
 
-        search_card = QFrame()
-        search_card.setObjectName("Card")
-        search_card.setStyleSheet(
+        ai_card = QFrame()
+        ai_card.setObjectName("Card")
+        ai_card.setStyleSheet(
             f"""
             QFrame#Card {{
                 background-color: {COLORS.surface};
@@ -192,38 +241,96 @@ class SettingsPage(QWidget):
             }}
             """
         )
-        sc_layout = QVBoxLayout(search_card)
-        sc_layout.setSpacing(10)
+        ai_layout = QVBoxLayout(ai_card)
+        ai_layout.setSpacing(14)
 
+        # Local Runtime Status
         runtime_row = QHBoxLayout()
-        rt_lbl = QLabel("Embedding Runtime: ONNX Runtime (Local CPU / DirectML)")
-        rt_lbl.setStyleSheet(f"font-size: 13px; color: {COLORS.text_primary};")
+        rt_lbl = QLabel("Local Embedding Runtime: ONNX DirectML / CPU")
+        rt_lbl.setStyleSheet(f"font-size: 13px; color: {COLORS.text_secondary};")
         runtime_row.addWidget(rt_lbl)
         runtime_row.addStretch()
 
         rt_badge = StatusBadge("Bundled & Offline", variant="success")
         runtime_row.addWidget(rt_badge)
-        sc_layout.addLayout(runtime_row)
+        ai_layout.addLayout(runtime_row)
 
-        ai_key_row = QHBoxLayout()
-        ai_lbl = QLabel("OpenAI API Key (Optional for Multimodal Vision):")
-        ai_lbl.setStyleSheet(f"font-size: 13px; color: {COLORS.text_secondary};")
-        ai_key_row.addWidget(ai_lbl)
+        # Divider
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setStyleSheet(f"background-color: {COLORS.border_subtle}; max-height: 1px;")
+        ai_layout.addWidget(divider)
 
-        key_input = QLineEdit()
-        key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        key_input.setPlaceholderText("sk-...")
-        if config.openai_api_key:
-            key_input.setText(config.openai_api_key)
-        ai_key_row.addWidget(key_input, 1)
+        # 1. AI Provider Selector
+        prov_row = QHBoxLayout()
+        prov_lbl = QLabel("AI Provider:")
+        prov_lbl.setStyleSheet(f"font-size: 13px; font-weight: 500; color: {COLORS.text_primary};")
+        prov_lbl.setFixedWidth(120)
+        prov_row.addWidget(prov_lbl)
 
-        save_btn = QPushButton("Save")
-        save_btn.setObjectName("BtnSecondary")
-        ai_key_row.addWidget(save_btn)
-        sc_layout.addLayout(ai_key_row)
+        self.provider_combo = QComboBox()
+        self.provider_combo.addItems(["OpenAI", "OpenRouter"])
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
+        prov_row.addWidget(self.provider_combo, 1)
+        ai_layout.addLayout(prov_row)
 
-        s3_box.addWidget(search_card)
+        # 2. API Key
+        key_row = QHBoxLayout()
+        key_lbl = QLabel("API Key:")
+        key_lbl.setStyleSheet(f"font-size: 13px; font-weight: 500; color: {COLORS.text_primary};")
+        key_lbl.setFixedWidth(120)
+        key_row.addWidget(key_lbl)
+
+        self.api_key_input = QLineEdit()
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_input.setPlaceholderText("Enter API Key (sk-... or sk-or-v1-...)")
+        key_row.addWidget(self.api_key_input, 1)
+        ai_layout.addLayout(key_row)
+
+        # 3. Model
+        model_row = QHBoxLayout()
+        model_lbl = QLabel("Model:")
+        model_lbl.setStyleSheet(f"font-size: 13px; font-weight: 500; color: {COLORS.text_primary};")
+        model_lbl.setFixedWidth(120)
+        model_row.addWidget(model_lbl)
+
+        self.model_combo = QComboBox()
+        self.model_combo.setEditable(True)
+        model_row.addWidget(self.model_combo, 1)
+        ai_layout.addLayout(model_row)
+
+        # 4. Action Row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
+
+        self.save_ai_btn = QPushButton("Save Settings")
+        self.save_ai_btn.setObjectName("BtnPrimary")
+        self.save_ai_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.save_ai_btn.clicked.connect(self._on_save_ai_settings)
+        btn_row.addWidget(self.save_ai_btn)
+
+        self.test_conn_btn = QPushButton("Test Connection")
+        self.test_conn_btn.setObjectName("BtnSecondary")
+        self.test_conn_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.test_conn_btn.clicked.connect(self._on_test_connection)
+        btn_row.addWidget(self.test_conn_btn)
+
+        self.test_status_lbl = QLabel("")
+        self.test_status_lbl.setStyleSheet(f"font-size: 13px; font-weight: 500;")
+        btn_row.addWidget(self.test_status_lbl, 1)
+
+        ai_layout.addLayout(btn_row)
+
+        s3_box.addWidget(ai_card)
         layout.addLayout(s3_box)
+
+        # Load active provider configuration into UI
+        initial_cfg = get_active_ai_config(self.repository)
+        if initial_cfg.provider.lower() == "openrouter":
+            self.provider_combo.setCurrentIndex(1)
+        else:
+            self.provider_combo.setCurrentIndex(0)
+        self._load_provider_settings(initial_cfg.provider.lower())
 
         layout.addStretch()
 
@@ -232,6 +339,90 @@ class SettingsPage(QWidget):
 
         # Initial render of managed roots from database
         self.refresh_roots_list()
+
+    def _on_provider_changed(self, index: int):
+        """Handle user changing the AI Provider dropdown."""
+        provider = "openrouter" if index == 1 else "openai"
+        self._load_provider_settings(provider)
+
+    def _load_provider_settings(self, provider: str):
+        """Populate API key and model fields for selected provider from preferences/env."""
+        # 1. API key
+        key = self.repository.get_preference(f"{provider}_api_key")
+        if key is None:
+            key = config.openrouter_api_key if provider == "openrouter" else config.openai_api_key
+        self.api_key_input.setText(key or "")
+
+        # 2. Model
+        saved_model = self.repository.get_preference(f"{provider}_model")
+        if not saved_model:
+            saved_model = config.openrouter_model if provider == "openrouter" else config.openai_model
+        if not saved_model:
+            saved_model = "openai/gpt-4o-mini" if provider == "openrouter" else "gpt-4o-mini"
+
+        self.model_combo.clear()
+        presets = MODEL_PRESETS.get(provider, [])
+        for m in presets:
+            self.model_combo.addItem(m)
+        if saved_model not in presets:
+            self.model_combo.insertItem(0, saved_model)
+        self.model_combo.setCurrentText(saved_model)
+
+        # 3. Reset test status
+        self.test_status_lbl.setText("")
+
+    def _on_save_ai_settings(self):
+        """Persist user-configured provider, API key, and model to SQLite preferences."""
+        provider = "openrouter" if self.provider_combo.currentIndex() == 1 else "openai"
+        api_key = self.api_key_input.text().strip()
+        model = self.model_combo.currentText().strip()
+
+        self.repository.set_preference("ai_provider", provider)
+        self.repository.set_preference(f"{provider}_api_key", api_key)
+        self.repository.set_preference(f"{provider}_model", model)
+
+        # Update in-memory configuration
+        config.ai_provider = provider
+        if provider == "openrouter":
+            config.openrouter_api_key = api_key
+            config.openrouter_model = model
+        else:
+            config.openai_api_key = api_key
+            config.openai_model = model
+
+        logger.info("Saved AI Provider configuration: provider=%s, model=%s", provider, model)
+        self.show_status_message(f"AI settings saved for {self.provider_combo.currentText()}.", duration_ms=4000)
+
+    def _on_test_connection(self):
+        """Execute non-blocking provider connectivity and model availability check."""
+        provider = "openrouter" if self.provider_combo.currentIndex() == 1 else "openai"
+        api_key = self.api_key_input.text().strip()
+        model = self.model_combo.currentText().strip()
+
+        if not api_key:
+            self.test_status_lbl.setStyleSheet(f"color: {COLORS.danger}; font-size: 13px; font-weight: 600;")
+            self.test_status_lbl.setText("Please enter an API key")
+            return
+
+        self.test_conn_btn.setEnabled(False)
+        self.test_conn_btn.setText("Testing...")
+        self.test_status_lbl.setStyleSheet(f"color: {COLORS.text_secondary}; font-size: 13px;")
+        self.test_status_lbl.setText("Contacting provider...")
+
+        worker = TestConnectionWorker(provider, api_key, model)
+        worker.signals.finished.connect(self._on_test_connection_finished)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_test_connection_finished(self, success: bool, message: str):
+        """Handle result from background connection test."""
+        self.test_conn_btn.setEnabled(True)
+        self.test_conn_btn.setText("Test Connection")
+        if success:
+            self.test_status_lbl.setStyleSheet(f"color: {COLORS.success}; font-size: 13px; font-weight: 600;")
+            self.test_status_lbl.setText(f"✔ {message}")
+        else:
+            self.test_status_lbl.setStyleSheet(f"color: {COLORS.danger}; font-size: 13px; font-weight: 600;")
+            self.test_status_lbl.setText(f"✖ {message}")
 
     def refresh_roots_list(self):
         """Render managed roots dynamically from SQLite."""

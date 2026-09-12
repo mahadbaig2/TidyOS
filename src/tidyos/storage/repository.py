@@ -825,4 +825,43 @@ class StorageRepository:
         matrix = np.vstack(vectors).astype(np.float32)
         return file_paths, matrix
 
+    # --------------------------------------------------------------------------
+    # Preferences & User Configuration
+    # --------------------------------------------------------------------------
+
+    def get_preference(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """Retrieve a user preference value by key."""
+        conn = self.get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM preferences WHERE key = ?", (key,))
+        row = cur.fetchone()
+        if row:
+            return row["value"]
+        return default
+
+    def set_preference(self, key: str, value: str) -> None:
+        """Persist or replace a user preference value."""
+        conn = self.get_connection()
+        now = utc_now_iso()
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO preferences (key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (key, value, now),
+            )
+
+    def delete_preference(self, key: str) -> bool:
+        """Delete a preference by key."""
+        conn = self.get_connection()
+        with conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM preferences WHERE key = ?", (key,))
+            return cur.rowcount > 0
+
 

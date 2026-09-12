@@ -60,9 +60,9 @@ class LibrarianAgent:
         openai_client: Optional[OpenAIClient] = None,
         repository: Optional[Any] = None,
     ):
-        self.extractor = extractor or ContentExtractor()
-        self.openai_client = openai_client or OpenAIClient()
         self.repository = repository
+        self.extractor = extractor or ContentExtractor()
+        self.openai_client = openai_client or OpenAIClient(repository=repository)
 
     def analyze_file(
         self,

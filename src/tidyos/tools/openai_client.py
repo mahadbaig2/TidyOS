@@ -8,34 +8,179 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from dataclasses import dataclass
+from pydantic import BaseModel, Field, model_validator
+
 from tidyos.config import config
 
 logger = logging.getLogger(__name__)
 
 
+class AIProviderConfig(BaseModel):
+    """Configuration container for an AI provider (OpenAI or OpenRouter)."""
+
+    provider: str = Field(default="openai")  # "openai" or "openrouter"
+    api_key: Optional[str] = None
+    model: str = Field(default="gpt-4o-mini")
+    base_url: Optional[str] = None
+
+    @model_validator(mode="after")
+    def set_openrouter_defaults(self) -> "AIProviderConfig":
+        if self.provider and self.provider.lower() == "openrouter" and not self.base_url:
+            self.base_url = "https://openrouter.ai/api/v1"
+        return self
+
+
+def get_active_ai_config(repository: Optional[Any] = None) -> AIProviderConfig:
+    """Resolve active AI provider configuration from database preferences or environment variables."""
+    provider = "openai"
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+
+    if repository and hasattr(repository, "get_preference"):
+        pref_provider = repository.get_preference("ai_provider")
+        if pref_provider:
+            provider = pref_provider.lower().strip()
+
+        pref_key = repository.get_preference(f"{provider}_api_key") or repository.get_preference("ai_api_key")
+        if pref_key:
+            api_key = pref_key.strip()
+
+        pref_model = repository.get_preference(f"{provider}_model") or repository.get_preference("ai_model")
+        if pref_model:
+            model = pref_model.strip()
+
+        pref_url = repository.get_preference(f"{provider}_base_url")
+        if pref_url:
+            base_url = pref_url.strip()
+
+    # Fallback to environment variables if not set in repository preferences
+    if not provider:
+        provider = (config.ai_provider or "openai").lower().strip()
+
+    if not api_key:
+        if provider == "openrouter":
+            api_key = config.openrouter_api_key
+            model = model or config.openrouter_model
+            base_url = base_url or config.openrouter_base_url
+        else:
+            api_key = config.openai_api_key
+            model = model or config.openai_model
+
+    if provider == "openrouter":
+        if not base_url:
+            base_url = config.openrouter_base_url or "https://openrouter.ai/api/v1"
+        if not model:
+            model = config.openrouter_model or "openai/gpt-4o-mini"
+    else:
+        if not model:
+            model = config.openai_model or "gpt-4o-mini"
+
+    return AIProviderConfig(
+        provider=provider,
+        api_key=api_key,
+        model=model,
+        base_url=base_url if provider == "openrouter" else None,
+    )
+
+
 class OpenAIClient:
-    """Client for OpenAI LLM and Vision semantic file analysis with deterministic local fallback."""
+    """Unified client for OpenAI and OpenRouter LLM/Vision semantic file analysis with offline fallback."""
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gpt-4o-mini",
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+        base_url: Optional[str] = None,
+        config_obj: Optional[AIProviderConfig] = None,
+        repository: Optional[Any] = None,
     ):
-        self.api_key = api_key or config.openai_api_key
-        self.model = model
+        if config_obj:
+            self.provider = config_obj.provider
+            self.api_key = config_obj.api_key
+            self.model = config_obj.model
+            self.base_url = config_obj.base_url
+        elif repository:
+            active = get_active_ai_config(repository)
+            self.provider = (provider or active.provider).lower()
+            self.api_key = api_key if api_key is not None else active.api_key
+            self.model = model or active.model
+            self.base_url = base_url if base_url is not None else active.base_url
+        else:
+            self.provider = (provider or config.ai_provider or "openai").lower()
+            if self.provider == "openrouter":
+                self.api_key = api_key if api_key is not None else config.openrouter_api_key
+                self.model = model or config.openrouter_model or "openai/gpt-4o-mini"
+                self.base_url = base_url or config.openrouter_base_url or "https://openrouter.ai/api/v1"
+            else:
+                self.api_key = api_key if api_key is not None else config.openai_api_key
+                self.model = model or config.openai_model or "gpt-4o-mini"
+                self.base_url = base_url
+
         self._client = None
 
-        if self.api_key:
+        if self.api_key and self.api_key.strip():
             try:
                 from openai import OpenAI
-                self._client = OpenAI(api_key=self.api_key)
+                client_kwargs: Dict[str, Any] = {"api_key": self.api_key.strip()}
+                if self.base_url:
+                    client_kwargs["base_url"] = self.base_url
+                self._client = OpenAI(**client_kwargs)
             except Exception as e:
-                logger.warning("Failed to initialize OpenAI client: %s", e)
+                logger.warning("Failed to initialize %s client: %s", self.provider, e)
                 self._client = None
 
     def is_available(self) -> bool:
-        """Check if an active OpenAI client with API key is available."""
+        """Check if an active client with API key is available."""
         return self._client is not None and bool(self.api_key and self.api_key.strip())
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """Verify provider connectivity, API key acceptance, and model reachability.
+
+        Returns:
+            Tuple[bool, str]: (is_success, sanitized_message)
+        """
+        if not self.api_key or not self.api_key.strip():
+            return False, "API key is missing"
+
+        if not self._client:
+            return False, f"Could not initialize {self.provider} client"
+
+        try:
+            # Probe models or ping lightweight endpoint with timeout
+            models_page = self._client.models.list(timeout=6.0)
+            if self.model:
+                if self.provider == "openai":
+                    try:
+                        self._client.models.retrieve(self.model, timeout=4.0)
+                    except Exception as me:
+                        me_str = str(me).lower()
+                        if "not found" in me_str or "404" in me_str or "does not exist" in me_str:
+                            return False, "Model unavailable"
+                elif self.provider == "openrouter":
+                    try:
+                        data = getattr(models_page, "data", None)
+                        if data:
+                            known_ids = {getattr(m, "id", "") for m in data}
+                            if known_ids and not any(self.model.strip().lower() == kid.strip().lower() for kid in known_ids if kid):
+                                return False, "Model unavailable"
+                    except Exception:
+                        pass
+            return True, "Connection successful"
+        except Exception as e:
+            err = str(e).lower()
+            if "auth" in err or "401" in err or "invalid" in err or "key" in err or "unauthorized" in err:
+                return False, "Invalid API key"
+            elif "not found" in err or "404" in err or "model" in err:
+                return False, "Model unavailable"
+            elif "timeout" in err or "connect" in err or "connection" in err or "timed out" in err:
+                return False, "Provider unreachable"
+            elif "rate" in err or "429" in err:
+                return False, "Rate limit reached"
+            else:
+                return False, "Connection failed: check network/credentials"
 
     def understand_document(
         self,
@@ -71,23 +216,44 @@ class OpenAIClient:
         )
 
         try:
-            assert self._client is not None
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are the TidyOS Librarian Agent. You analyze file contents to produce structured semantic understanding. Always respond with valid JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=500,
-            )
+            try:
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are the TidyOS Librarian Agent. You analyze file contents to produce structured semantic understanding. Always respond with valid JSON.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                    max_tokens=500,
+                )
+            except Exception as fmt_err:
+                # If json_object format is not supported by the model (e.g. some OpenRouter models), retry without it
+                if "response_format" in str(fmt_err).lower() or "json" in str(fmt_err).lower():
+                    response = self._client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are the TidyOS Librarian Agent. You analyze file contents to produce structured semantic understanding. Always respond with valid JSON.",
+                            },
+                            {"role": "user", "content": prompt + "\n\nImportant: Output ONLY the raw JSON object and nothing else."},
+                        ],
+                        temperature=0.1,
+                        max_tokens=500,
+                    )
+                else:
+                    raise fmt_err
+
             raw_content = response.choices[0].message.content or "{}"
-            result = json.loads(raw_content)
-            result["analysis_source"] = f"openai_{self.model}"
+            # Extract JSON substring if needed
+            match = re.search(r"\{.*\}", raw_content, re.DOTALL)
+            json_str = match.group(0) if match else raw_content
+            result = json.loads(json_str)
+            result["analysis_source"] = f"{self.provider}_{self.model}"
 
             # Validate and clamp fields
             result["confidence"] = max(0.0, min(1.0, float(result.get("confidence", 0.85))))
@@ -98,7 +264,7 @@ class OpenAIClient:
 
             return result
         except Exception as e:
-            logger.warning("OpenAI document analysis failed (%s); falling back to local heuristics", e)
+            logger.warning("%s document analysis failed (%s); falling back to local heuristics", self.provider, e)
             return self._heuristic_document_analysis(extracted_text, filename, path_context, metadata)
 
     def describe_image(
@@ -129,37 +295,68 @@ class OpenAIClient:
             f"- 'suggested_folder': string (e.g. 'Pictures/Screenshots', 'Finance/Receipts', 'Design/Mockups')\n"
             f"- 'confidence': float (between 0.0 and 1.0)\n"
         )
-
         try:
-            assert self._client is not None
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are the TidyOS Librarian Vision Agent. You analyze images to extract visual and semantic metadata. Always respond with valid JSON.",
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{mime_type};base64,{base64_image}",
-                                    "detail": "low",
+            try:
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are the TidyOS Librarian Vision Agent. You analyze images to extract visual and semantic metadata. Always respond with valid JSON.",
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{mime_type};base64,{base64_image}",
+                                        "detail": "low",
+                                    },
                                 },
+                            ],
+                        },
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                    max_tokens=400,
+                )
+            except Exception as fmt_err:
+                # If json_object format is not supported by the vision model, retry without it
+                if "response_format" in str(fmt_err).lower() or "json" in str(fmt_err).lower():
+                    response = self._client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are the TidyOS Librarian Vision Agent. You analyze images to extract visual and semantic metadata. Always respond with valid JSON.",
+                            },
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt + "\n\nOutput ONLY valid raw JSON."},
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:{mime_type};base64,{base64_image}",
+                                            "detail": "low",
+                                        },
+                                    },
+                                ],
                             },
                         ],
-                    },
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=400,
-            )
+                        temperature=0.1,
+                        max_tokens=400,
+                    )
+                else:
+                    raise fmt_err
+
             raw_content = response.choices[0].message.content or "{}"
-            result = json.loads(raw_content)
-            result["analysis_source"] = f"openai_vision_{self.model}"
+            match = re.search(r"\{.*\}", raw_content, re.DOTALL)
+            json_str = match.group(0) if match else raw_content
+            result = json.loads(json_str)
+            result["analysis_source"] = f"{self.provider}_vision_{self.model}"
             result["confidence"] = max(0.0, min(1.0, float(result.get("confidence", 0.85))))
             if not isinstance(result.get("entities"), list):
                 result["entities"] = []
@@ -167,7 +364,7 @@ class OpenAIClient:
                 result["topics"] = []
             return result
         except Exception as e:
-            logger.warning("OpenAI vision analysis failed (%s); falling back to local heuristics", e)
+            logger.warning("%s vision analysis failed (%s); falling back to local heuristics", self.provider, e)
             return self._heuristic_image_analysis(filename, path_context, extracted_text)
 
     # --------------------------------------------------------------------------

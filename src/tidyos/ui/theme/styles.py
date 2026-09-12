@@ -244,4 +244,32 @@ def get_application_stylesheet() -> str:
         border-radius: {RADII.sm}px;
         font-size: 12px;
     }}
+
+    /* ComboBox */
+    QComboBox {{
+        background-color: {COLORS.surface};
+        color: {COLORS.text_primary};
+        border: 1px solid {COLORS.border};
+        border-radius: {RADII.md}px;
+        padding: 6px 12px;
+        font-size: 13px;
+    }}
+
+    QComboBox:focus {{
+        border: 1px solid {COLORS.border_focus};
+    }}
+
+    QComboBox::drop-down {{
+        border: none;
+        padding-right: 8px;
+    }}
+
+    QComboBox QAbstractItemView {{
+        background-color: {COLORS.surface_raised};
+        color: {COLORS.text_primary};
+        selection-background-color: {COLORS.surface_active};
+        selection-color: {COLORS.text_primary};
+        border: 1px solid {COLORS.border};
+        padding: 4px;
+    }}
     """

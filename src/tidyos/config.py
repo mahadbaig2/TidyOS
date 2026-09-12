@@ -31,9 +31,24 @@ class AppConfig(BaseModel):
     version: str = "0.1.0"
     env: str = Field(default_factory=lambda: os.getenv("TIDYOS_ENV", "production"))
 
-    # OpenAI API (Optional for offline local runs)
+    # AI Provider & LLM Integration (OpenAI + OpenRouter)
+    ai_provider: str = Field(
+        default_factory=lambda: os.getenv("AI_PROVIDER", "openai").lower()
+    )
     openai_api_key: Optional[str] = Field(
         default_factory=lambda: os.getenv("OPENAI_API_KEY")
+    )
+    openai_model: str = Field(
+        default_factory=lambda: os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    )
+    openrouter_api_key: Optional[str] = Field(
+        default_factory=lambda: os.getenv("OPENROUTER_API_KEY")
+    )
+    openrouter_model: str = Field(
+        default_factory=lambda: os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+    )
+    openrouter_base_url: str = Field(
+        default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     )
 
     # Logging
