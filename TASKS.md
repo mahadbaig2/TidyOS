@@ -126,34 +126,34 @@ Pass criteria:
 # Phase 3 — Content Understanding and Librarian Agent
 
 ## M3.1 Extractors
-- [ ] P3.1.1 TXT/Markdown extraction
-- [ ] P3.1.2 PDF extraction with PyMuPDF
-- [ ] P3.1.3 DOCX extraction
-- [ ] P3.1.4 Metadata-only fallback
-- [ ] P3.1.5 Content truncation/minimization strategy
+- [x] P3.1.1 TXT/Markdown extraction
+- [x] P3.1.2 PDF extraction with PyMuPDF
+- [x] P3.1.3 DOCX extraction
+- [x] P3.1.4 Metadata-only fallback
+- [x] P3.1.5 Content truncation/minimization strategy
 
 ## M3.2 Image Understanding
-- [ ] P3.2.1 Image file detection
-- [ ] P3.2.2 OpenAI vision wrapper
-- [ ] P3.2.3 Screenshot semantic description
-- [ ] P3.2.4 Tags/subject extraction
-- [ ] P3.2.5 Graceful offline/failure fallback
+- [x] P3.2.1 Image file detection
+- [x] P3.2.2 OpenAI vision wrapper
+- [x] P3.2.3 Screenshot semantic description
+- [x] P3.2.4 Tags/subject extraction
+- [x] P3.2.5 Graceful offline/failure fallback
 
 ## M3.3 Librarian Agent
-- [ ] P3.3.1 Pydantic `FileUnderstanding` schema
-- [ ] P3.3.2 LangGraph Librarian node
-- [ ] P3.3.3 Tool: metadata
-- [ ] P3.3.4 Tool: extract text
-- [ ] P3.3.5 Tool: image description
-- [ ] P3.3.6 Structured type/category/title/entities/date/summary/tags/confidence
-- [ ] P3.3.7 Persist understanding in SQLite
+- [x] P3.3.1 Pydantic `FileUnderstanding` schema
+- [x] P3.3.2 LangGraph Librarian node
+- [x] P3.3.3 Tool: metadata
+- [x] P3.3.4 Tool: extract text
+- [x] P3.3.5 Tool: image description
+- [x] P3.3.6 Structured type/category/title/entities/date/summary/tags/confidence
+- [x] P3.3.7 Persist understanding in SQLite
 
 ### Gate M3
-- [ ] Badly named invoice is understood correctly
-- [ ] Hackathon PDF is understood correctly
-- [ ] Resume is understood correctly
-- [ ] Screenshot receives useful semantic description
-- [ ] Protected files are not mutated during understanding
+- [x] Badly named invoice is understood correctly
+- [x] Hackathon PDF is understood correctly
+- [x] Resume is understood correctly
+- [x] Screenshot receives useful semantic description
+- [x] Protected files are not mutated during understanding
 
 ---
 
