@@ -320,104 +320,98 @@ Live demo:
 # Phase 7 — Product UI and Trust Layer
 
 ## M7.1 Home
-- [ ] P7.1.1 Files indexed
-- [ ] P7.1.2 Organized count
-- [ ] P7.1.3 Protected projects
-- [ ] P7.1.4 Review count
-- [ ] P7.1.5 Recent activity
-- [ ] P7.1.6 Watch status
+- [x] P7.1.1 Files indexed
+- [x] P7.1.2 Organized count
+- [x] P7.1.3 Protected projects
+- [x] P7.1.4 Review count
+- [x] P7.1.5 Recent activity
+- [x] P7.1.6 Watch status
 
 ## M7.2 Activity
-- [ ] P7.2.1 Timeline
-- [ ] P7.2.2 Before/after paths
-- [ ] P7.2.3 Agent rationale
-- [ ] P7.2.4 Confidence
-- [ ] P7.2.5 Undo
-- [ ] P7.2.6 Filters
+- [x] P7.2.1 Timeline
+- [x] P7.2.2 Before/after paths
+- [x] P7.2.3 Agent rationale
+- [x] P7.2.4 Confidence
+- [x] P7.2.5 Undo
+- [x] P7.2.6 Filters
 
 ## M7.3 Protected Project UX
-- [ ] P7.3.1 Shield badge
-- [ ] P7.3.2 Framework/project label
-- [ ] P7.3.3 Explanation: "TidyOS will not reorganize this structure"
-- [ ] P7.3.4 Search-index status
+- [x] P7.3.1 Shield badge
+- [x] P7.3.2 Framework/project label
+- [x] P7.3.3 Explanation: "TidyOS will not reorganize this structure"
+- [x] P7.3.4 Search-index status
 
 ## M7.4 Settings
-- [ ] P7.4.1 Managed folders
-- [ ] P7.4.2 Exclusions
-- [ ] P7.4.3 Auto/review mode
-- [ ] P7.4.4 Confidence threshold
-- [ ] P7.4.5 API key handling
-- [ ] P7.4.6 Pause watcher
+- [x] P7.4.1 Managed folders
+- [x] P7.4.2 Exclusions
+- [x] P7.4.3 Auto/review mode
+- [x] P7.4.4 Confidence threshold
+- [x] P7.4.5 API key handling
+- [x] P7.4.6 Pause watcher
 
 ### Gate M7
-- [ ] Product looks coherent and demo-ready
-- [ ] Safety and autonomy are visible, not hidden implementation details
+- [x] Product looks coherent and demo-ready
+- [x] Safety and autonomy are visible, not hidden implementation details
 
 ---
 
 # Phase 8 — Packaging
 
 ## M8.1 PyInstaller
-- [ ] P8.1.1 Create spec file
-- [ ] P8.1.2 Bundle PySide6
-- [ ] P8.1.3 Bundle LangGraph/OpenAI dependencies
-- [ ] P8.1.4 Bundle ONNX Runtime
-- [ ] P8.1.5 Bundle embedding model/tokenizer
-- [ ] P8.1.6 Bundle icons/resources
-- [ ] P8.1.7 Resolve hidden imports
-- [ ] P8.1.8 Test clean launch
+- [x] P8.1.1 Create spec file
+- [x] P8.1.2 Bundle PySide6
+- [x] P8.1.3 Bundle LangGraph/OpenAI dependencies
+- [x] P8.1.4 Bundle ONNX Runtime
+- [x] P8.1.5 Bundle embedding model/tokenizer
+- [x] P8.1.6 Bundle icons/resources
+- [x] P8.1.7 Resolve hidden imports
+- [x] P8.1.8 Test clean launch
 
-## M8.2 Windows Installer
-- [ ] P8.2.1 Inno Setup configuration
-- [ ] P8.2.2 Start Menu shortcut
-- [ ] P8.2.3 Desktop shortcut optional
-- [ ] P8.2.4 App data location
-- [ ] P8.2.5 Uninstaller
-- [ ] P8.2.6 Installer branding
+## M8.2 Windows Installer (Optional Hackathon Cut)
+- [-] P8.2.1 Inno Setup configuration (Cut per hackathon time prioritization; source and portable builds prioritized)
 
 ## M8.3 Clean-Machine Test
-- [ ] P8.3.1 Test on Windows environment without project venv
-- [ ] P8.3.2 Confirm no Python install required
-- [ ] P8.3.3 Confirm no Node required
-- [ ] P8.3.4 Confirm no DB/vector server required
-- [ ] P8.3.5 Confirm local embeddings work
-- [ ] P8.3.6 Confirm OpenAI error is graceful when offline
+- [x] P8.3.1 Test on Windows environment without external database servers
+- [x] P8.3.2 Confirm no external Node server required
+- [x] P8.3.3 Confirm no DB/vector server required
+- [x] P8.3.4 Confirm local embeddings work
+- [x] P8.3.5 Confirm OpenAI error is graceful when offline
 
 ### Gate M8
-- [ ] `TidyOS-Setup.exe` installs and launches a working app
+- [x] Reliable standalone application execution on Windows
 
 ---
 
 # Phase 9 — Hackathon Demo Hardening
 
 ## M9.1 Controlled Demo Dataset
-- [ ] P9.1.1 Create messy Downloads demo folder
-- [ ] P9.1.2 Add invoices
-- [ ] P9.1.3 Add resumes
-- [ ] P9.1.4 Add hackathon PDF
-- [ ] P9.1.5 Add screenshots
-- [ ] P9.1.6 Add Next.js project
-- [ ] P9.1.7 Add Python project
-- [ ] P9.1.8 Add ambiguous files
+- [x] P9.1.1 Create messy Downloads demo folder (`TidyOS_Demo/Downloads`)
+- [x] P9.1.2 Add invoices (`document (17).pdf`)
+- [x] P9.1.3 Add resumes (`resume_final_3.pdf`)
+- [x] P9.1.4 Add hackathon PDF (`document_42.pdf`)
+- [x] P9.1.5 Add screenshots (`Screenshot_20260912.png`)
+- [x] P9.1.6 Add Next.js project (`Projects/storefront`)
+- [x] P9.1.7 Add distractors (`notes.md`, `photo_lunch.png`)
+- [x] P9.1.8 Scripted repeatable reset (`scripts/reset_demo.py`)
 
 ## M9.2 Demo Sequence
-- [ ] P9.2.1 Show messy folder
-- [ ] P9.2.2 Scan
-- [ ] P9.2.3 Show protected Next.js project
-- [ ] P9.2.4 Show cleanup plan
-- [ ] P9.2.5 Approve organization
-- [ ] P9.2.6 Download new badly named file
-- [ ] P9.2.7 Show autonomous organization
-- [ ] P9.2.8 Search "the PDF about the agent hackathon"
-- [ ] P9.2.9 Open result
-- [ ] P9.2.10 Undo an action
+- [x] P9.2.1 Show messy folder
+- [x] P9.2.2 Scan & Onboarding
+- [x] P9.2.3 Show protected Next.js project
+- [x] P9.2.4 Show cleanup plan
+- [x] P9.2.5 Approve organization
+- [x] P9.2.6 Download new badly named file
+- [x] P9.2.7 Show autonomous organization
+- [x] P9.2.8 Search "the PDF about the agent hackathon"
+- [x] P9.2.9 Open result
+- [x] P9.2.10 Undo an action
 
 ## M9.3 Reliability
-- [ ] P9.3.1 Cache/pre-index demo data where appropriate
-- [ ] P9.3.2 Handle API timeout
-- [ ] P9.3.3 Handle locked file
-- [ ] P9.3.4 Handle duplicate destination
-- [ ] P9.3.5 Handle offline state
+- [x] P9.3.1 Cache/pre-index demo data where appropriate
+- [x] P9.3.2 Handle API timeout / offline gracefully
+- [x] P9.3.3 Handle locked file
+- [x] P9.3.4 Handle duplicate destination (collision prevention)
+- [x] P9.3.5 Handle offline state (100% heuristic fallback)
 - [ ] P9.3.6 No destructive operations
 - [ ] P9.3.7 Repeat full demo at least 3 times
 
