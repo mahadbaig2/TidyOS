@@ -527,6 +527,9 @@ class StorageRepository:
         cur.execute("SELECT COUNT(*) FROM review_queue WHERE status = 'PENDING'")
         total_review = cur.fetchone()[0]
 
+        cur.execute("SELECT COUNT(*) FROM file_understandings")
+        total_understood = cur.fetchone()[0]
+
         return {
             "total_roots": total_roots,
             "total_files": total_files,
@@ -534,4 +537,171 @@ class StorageRepository:
             "total_protected": total_protected,
             "total_organized": total_organized,
             "total_review": total_review,
+            "total_understood": total_understood,
         }
+
+    # -------------------------------------------------------------------------
+    # Semantic File Understandings (Librarian Cache & Search)
+    # -------------------------------------------------------------------------
+
+    def save_file_understanding(self, understanding: Any) -> int:
+        """Persist or update semantic understanding for a file."""
+        conn = self.get_connection()
+        entities_json = json.dumps(understanding.entities or [])
+        topics_json = json.dumps(understanding.topics or [])
+        analyzed_at_iso = understanding.analyzed_at.isoformat() if hasattr(understanding.analyzed_at, "isoformat") else str(understanding.analyzed_at)
+
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO file_understandings (
+                    file_path, sha256_hash, document_type, title, summary,
+                    entities, topics, suggested_folder, confidence,
+                    extracted_chars, is_truncated, analysis_source, analyzed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(file_path, sha256_hash) DO UPDATE SET
+                    document_type = excluded.document_type,
+                    title = excluded.title,
+                    summary = excluded.summary,
+                    entities = excluded.entities,
+                    topics = excluded.topics,
+                    suggested_folder = excluded.suggested_folder,
+                    confidence = excluded.confidence,
+                    extracted_chars = excluded.extracted_chars,
+                    is_truncated = excluded.is_truncated,
+                    analysis_source = excluded.analysis_source,
+                    analyzed_at = excluded.analyzed_at
+                """,
+                (
+                    str(understanding.file_path),
+                    understanding.sha256_hash,
+                    understanding.document_type,
+                    understanding.title,
+                    understanding.summary,
+                    entities_json,
+                    topics_json,
+                    understanding.suggested_folder,
+                    float(understanding.confidence),
+                    int(understanding.extracted_chars),
+                    1 if understanding.is_truncated else 0,
+                    understanding.analysis_source,
+                    analyzed_at_iso,
+                ),
+            )
+            return cur.lastrowid
+
+    def get_file_understanding(
+        self, file_path: str, sha256_hash: Optional[str] = None
+    ) -> Optional[Any]:
+        """Fetch cached semantic understanding for a file, optionally verifying hash."""
+        from datetime import datetime
+        from tidyos.agents.librarian import FileUnderstanding
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        if sha256_hash:
+            cur.execute(
+                """
+                SELECT * FROM file_understandings
+                WHERE file_path = ? AND sha256_hash = ?
+                LIMIT 1
+                """,
+                (str(file_path), sha256_hash),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT * FROM file_understandings
+                WHERE file_path = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(file_path),),
+            )
+
+        row = cur.fetchone()
+        if not row:
+            return None
+
+        entities = json.loads(row["entities"]) if row["entities"] else []
+        topics = json.loads(row["topics"]) if row["topics"] else []
+
+        try:
+            analyzed_at = datetime.fromisoformat(row["analyzed_at"])
+        except Exception:
+            analyzed_at = datetime.utcnow()
+
+        return FileUnderstanding(
+            file_path=row["file_path"],
+            sha256_hash=row["sha256_hash"],
+            document_type=row["document_type"],
+            title=row["title"],
+            summary=row["summary"],
+            entities=entities,
+            topics=topics,
+            suggested_folder=row["suggested_folder"],
+            confidence=float(row["confidence"]),
+            extracted_chars=int(row["extracted_chars"]),
+            is_truncated=bool(row["is_truncated"]),
+            analysis_source=row["analysis_source"],
+            analyzed_at=analyzed_at,
+        )
+
+    def list_file_understandings(
+        self, document_type: Optional[str] = None, limit: int = 100
+    ) -> List[Any]:
+        """List recently analyzed file understandings."""
+        from datetime import datetime
+        from tidyos.agents.librarian import FileUnderstanding
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        if document_type:
+            cur.execute(
+                """
+                SELECT * FROM file_understandings
+                WHERE document_type = ?
+                ORDER BY id DESC LIMIT ?
+                """,
+                (document_type, limit),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT * FROM file_understandings
+                ORDER BY id DESC LIMIT ?
+                """,
+                (limit,),
+            )
+
+        results = []
+        for row in cur.fetchall():
+            entities = json.loads(row["entities"]) if row["entities"] else []
+            topics = json.loads(row["topics"]) if row["topics"] else []
+            try:
+                analyzed_at = datetime.fromisoformat(row["analyzed_at"])
+            except Exception:
+                analyzed_at = datetime.utcnow()
+
+            results.append(
+                FileUnderstanding(
+                    file_path=row["file_path"],
+                    sha256_hash=row["sha256_hash"],
+                    document_type=row["document_type"],
+                    title=row["title"],
+                    summary=row["summary"],
+                    entities=entities,
+                    topics=topics,
+                    suggested_folder=row["suggested_folder"],
+                    confidence=float(row["confidence"]),
+                    extracted_chars=int(row["extracted_chars"]),
+                    is_truncated=bool(row["is_truncated"]),
+                    analysis_source=row["analysis_source"],
+                    analyzed_at=analyzed_at,
+                )
+            )
+        return results
+

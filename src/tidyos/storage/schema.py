@@ -105,6 +105,25 @@ CREATE TABLE IF NOT EXISTS file_text (
     indexed_at TEXT NOT NULL
 );
 
+-- Semantic file understanding produced by Librarian Agent
+CREATE TABLE IF NOT EXISTS file_understandings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path TEXT NOT NULL,
+    sha256_hash TEXT NOT NULL,
+    document_type TEXT NOT NULL DEFAULT 'unknown',
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    entities TEXT NOT NULL DEFAULT '[]',
+    topics TEXT NOT NULL DEFAULT '[]',
+    suggested_folder TEXT,
+    confidence REAL NOT NULL DEFAULT 0.0,
+    extracted_chars INTEGER NOT NULL DEFAULT 0,
+    is_truncated INTEGER NOT NULL DEFAULT 0,
+    analysis_source TEXT NOT NULL DEFAULT 'local_heuristic',
+    analyzed_at TEXT NOT NULL,
+    UNIQUE(file_path, sha256_hash)
+);
+
 -- Schema metadata table for tracking version
 CREATE TABLE IF NOT EXISTS schema_info (
     version INTEGER PRIMARY KEY,
@@ -120,6 +139,9 @@ CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_path);
 CREATE INDEX IF NOT EXISTS idx_actions_status ON actions(status);
 CREATE INDEX IF NOT EXISTS idx_actions_created ON actions(created_at);
 CREATE INDEX IF NOT EXISTS idx_protected_roots_path ON protected_roots(path);
+CREATE INDEX IF NOT EXISTS idx_file_understandings_path ON file_understandings(file_path);
+CREATE INDEX IF NOT EXISTS idx_file_understandings_hash ON file_understandings(sha256_hash);
+CREATE INDEX IF NOT EXISTS idx_file_understandings_type ON file_understandings(document_type);
 """
 
 
