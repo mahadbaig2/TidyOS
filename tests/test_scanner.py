@@ -137,3 +137,33 @@ def test_missing_or_inaccessible_root_handling(tmp_path: Path):
 
     assert len(result.errors) > 0
     assert result.total_files == 0
+
+
+def test_symlink_safety_and_cycle_avoidance(tmp_path: Path):
+    """Test that scanner ignores symlink recursion and does not enter infinite loops."""
+    db_path = tmp_path / "test.db"
+    repo = StorageRepository(db_path)
+
+    base = tmp_path / "SymlinkTest"
+    base.mkdir()
+    (base / "actual_file.txt").write_text("Hello Symlink", encoding="utf-8")
+
+    sub = base / "subdir"
+    sub.mkdir()
+
+    # Try creating a recursive symlink if supported by OS permissions
+    try:
+        os.symlink(str(base), str(sub / "loop_link"), target_is_directory=True)
+    except (OSError, NotImplementedError):
+        # On Windows without Developer Mode, creating directory symlinks requires elevation
+        pytest.skip("Symlink creation not permitted in this Windows environment")
+
+    root = repo.add_managed_root(base)
+    scanner = FilesystemScanner(repo)
+    result = scanner.scan_root(root)
+
+    # If os.walk followlinks=False, it does not recurse into loop_link
+    assert result.total_files == 1
+    stats = repo.get_statistics()
+    assert stats["total_files"] == 1
+
