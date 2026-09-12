@@ -130,9 +130,16 @@ class FilesystemScanner:
         self,
         repository: StorageRepository,
         batch_size: int = 250,
+        protection_manager: Optional[Any] = None,
     ):
         self.repo = repository
         self.batch_size = batch_size
+        if protection_manager is None:
+            from tidyos.safety.protection_manager import ProtectionManager
+            self.protection_manager = ProtectionManager(self.repo)
+        else:
+            self.protection_manager = protection_manager
+
 
     def scan_root(
         self,
@@ -201,8 +208,12 @@ class FilesystemScanner:
             entries_in_dir = set(dirnames) | set(filenames)
             detected_markers = sorted(list(entries_in_dir.intersection(STRUCTURAL_MARKERS)))
 
+            # Evaluate directory for protected project boundary
+            self.protection_manager.check_and_register_directory(current_dir_path, entries=entries_in_dir)
+
             # Calculate relative path and depth
             rel_dir = os.path.relpath(current_dir_path, canonical_root)
+
             depth = 0 if rel_dir == "." else len(Path(rel_dir).parts)
 
             parent_path = str(Path(current_dir_path).parent) if current_dir_path != canonical_root else None
