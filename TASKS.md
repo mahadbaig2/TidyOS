@@ -160,62 +160,62 @@ Pass criteria:
 # Phase 4 — Semantic Search P0
 
 ## M4.1 Local Embedding Runtime
-- [ ] P4.1.1 Select compact embedding model suitable for redistribution
-- [ ] P4.1.2 Export/obtain ONNX model
-- [ ] P4.1.3 Bundle tokenizer/assets
-- [ ] P4.1.4 Implement local inference with ONNX Runtime
-- [ ] P4.1.5 Normalize embeddings
-- [ ] P4.1.6 Batch indexing support
+- [x] P4.1.1 Select compact embedding model suitable for redistribution
+- [x] P4.1.2 Export/obtain ONNX model
+- [x] P4.1.3 Bundle tokenizer/assets
+- [x] P4.1.4 Implement local inference with ONNX Runtime
+- [x] P4.1.5 Normalize embeddings
+- [x] P4.1.6 Batch indexing support
 
 ## M4.2 Local Vector Index
-- [ ] P4.2.1 Define embedding storage format
-- [ ] P4.2.2 Persist file vectors locally
-- [ ] P4.2.3 Load/cache vector matrix
-- [ ] P4.2.4 NumPy similarity search
-- [ ] P4.2.5 Metadata filtering
+- [x] P4.2.1 Define embedding storage format
+- [x] P4.2.2 Persist file vectors locally
+- [x] P4.2.3 Load/cache vector matrix
+- [x] P4.2.4 NumPy similarity search
+- [x] P4.2.5 Metadata filtering
 
 ## M4.3 Full-Text Search
-- [ ] P4.3.1 Create SQLite FTS5 virtual table
-- [ ] P4.3.2 Index filename
-- [ ] P4.3.3 Index extracted text/summary/tags
-- [ ] P4.3.4 Implement FTS query
+- [x] P4.3.1 Create SQLite FTS5 virtual table
+- [x] P4.3.2 Index filename
+- [x] P4.3.3 Index extracted text/summary/tags
+- [x] P4.3.4 Implement FTS query
 
 ## M4.4 Hybrid Retrieval
-- [ ] P4.4.1 Semantic score
-- [ ] P4.4.2 FTS score
-- [ ] P4.4.3 Filename score
-- [ ] P4.4.4 Metadata/date/type filters
-- [ ] P4.4.5 Rank fusion
-- [ ] P4.4.6 Return reason/snippet
+- [x] P4.4.1 Semantic score
+- [x] P4.4.2 FTS score
+- [x] P4.4.3 Filename score
+- [x] P4.4.4 Metadata/date/type filters
+- [x] P4.4.5 Rank fusion
+- [x] P4.4.6 Return reason/snippet
 
 ## M4.5 Search Agent
-- [ ] P4.5.1 Define search intent schema
-- [ ] P4.5.2 LangGraph Search workflow
-- [ ] P4.5.3 Tool: semantic search
-- [ ] P4.5.4 Tool: full-text search
-- [ ] P4.5.5 Tool: filename search
-- [ ] P4.5.6 Tool: metadata search
-- [ ] P4.5.7 Tool: file details
-- [ ] P4.5.8 Tool: open file
-- [ ] P4.5.9 Tool: reveal in Explorer
-- [ ] P4.5.10 Parse natural date/type constraints
+- [x] P4.5.1 Define search intent schema
+- [x] P4.5.2 LangGraph Search workflow
+- [x] P4.5.3 Tool: semantic search
+- [x] P4.5.4 Tool: full-text search
+- [x] P4.5.5 Tool: filename search
+- [x] P4.5.6 Tool: metadata search
+- [x] P4.5.7 Tool: file details
+- [x] P4.5.8 Tool: open file
+- [x] P4.5.9 Tool: reveal in Explorer
+- [x] P4.5.10 Parse natural date/type constraints
 
 ## M4.6 Search UI
-- [ ] P4.6.1 Hero search field
-- [ ] P4.6.2 Search state/loading
-- [ ] P4.6.3 Result cards
-- [ ] P4.6.4 Match reason
-- [ ] P4.6.5 Path/category metadata
-- [ ] P4.6.6 Open
-- [ ] P4.6.7 Show in Folder
+- [x] P4.6.1 Hero search field
+- [x] P4.6.2 Search state/loading
+- [x] P4.6.3 Result cards
+- [x] P4.6.4 Match reason
+- [x] P4.6.5 Path/category metadata
+- [x] P4.6.6 Open
+- [x] P4.6.7 Show in Folder
 
 ### Gate M4
 Using deliberately poor filenames, queries must successfully retrieve:
-- [ ] "the PDF about the agent hackathon"
-- [ ] "my latest AI resume"
-- [ ] "the screenshot with the FastAPI error"
-- [ ] an exact phrase via FTS
-- [ ] a query with file-type/date constraints
+- [x] "the PDF about the agent hackathon"
+- [x] "my latest AI resume"
+- [x] "the screenshot with the FastAPI error"
+- [x] an exact phrase via FTS
+- [x] a query with file-type/date constraints
 
 **Semantic search is not optional. Do not demote this milestone.**
 
