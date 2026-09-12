@@ -330,22 +330,56 @@ class SearchPage(QWidget):
                     f"""
                     QFrame#Card {{
                         background-color: {COLORS.surface};
-                        border: 1px solid {COLORS.border};
+                        border: 1px dashed {COLORS.border};
                         border-radius: {RADII.lg}px;
-                        padding: {SPACING.xl}px;
+                        padding: {SPACING.xl * 2}px;
                     }}
                     """
                 )
                 e_layout = QVBoxLayout(empty_card)
-                e_title = QLabel(f'No matching files found for "{clean_q}"')
-                e_title.setStyleSheet(f"font-size: 15px; font-weight: 600; color: {COLORS.text_primary};")
+                e_layout.setSpacing(12)
+                e_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                e_icon = QLabel("🔍")
+                e_icon.setStyleSheet("font-size: 36px;")
+                e_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                e_layout.addWidget(e_icon)
+
+                e_title = QLabel("No matching files found")
+                e_title.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {COLORS.text_primary};")
+                e_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 e_layout.addWidget(e_title)
 
-                e_desc = QLabel("Try searching with different terms, file types (e.g. 'PDF' or 'screenshot'), or scan your folders in Settings.")
-                e_desc.setStyleSheet(f"font-size: 13px; color: {COLORS.text_secondary};")
+                e_desc = QLabel(
+                    f'We searched your indexed files for "<b>{clean_q}</b>", but couldn\'t find any files matching your description.<br>'
+                    f'This file may not exist on your computer, or it may be located in a folder that hasn\'t been added to TidyOS yet.'
+                )
+                e_desc.setTextFormat(Qt.TextFormat.RichText)
+                e_desc.setStyleSheet(f"font-size: 13px; color: {COLORS.text_secondary}; line-height: 1.5;")
+                e_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 e_layout.addWidget(e_desc)
+
+                tips_box = QFrame()
+                tips_box.setStyleSheet(f"background-color: {COLORS.surface_raised}; border: 1px solid {COLORS.border}; border-radius: {RADII.md}px; padding: 12px 16px; margin-top: 10px;")
+                tb_layout = QVBoxLayout(tips_box)
+                tb_layout.setSpacing(6)
+
+                tip_hdr = QLabel("💡 Suggestions:")
+                tip_hdr.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {COLORS.text_primary};")
+                tb_layout.addWidget(tip_hdr)
+
+                tip1 = QLabel("• Check <b>Settings</b> to ensure the folder containing your file is added and scanned.")
+                tip1.setStyleSheet(f"font-size: 12px; color: {COLORS.text_muted};")
+                tb_layout.addWidget(tip1)
+
+                tip2 = QLabel("• Try searching with broader keywords or removing specific file extensions.")
+                tip2.setStyleSheet(f"font-size: 12px; color: {COLORS.text_muted};")
+                tb_layout.addWidget(tip2)
+
+                e_layout.addWidget(tips_box)
+
                 self.results_layout.addWidget(empty_card)
-                self.results_title.setText(f'0 results for "{clean_q}"')
+                self.results_title.setText(f'0 matching files for "{clean_q}"')
                 return
 
             self.results_title.setText(f'Found {len(results)} matching file(s) for "{clean_q}"')

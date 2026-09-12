@@ -107,6 +107,7 @@ class OpenAIClient:
         filename: str,
         mime_type: str = "image/jpeg",
         path_context: str = "",
+        extracted_text: str = "",
     ) -> Dict[str, Any]:
         """Describe and classify an image using OpenAI Vision.
 
@@ -114,7 +115,7 @@ class OpenAIClient:
         or an API error occurs.
         """
         if not self.is_available() or not base64_image:
-            return self._heuristic_image_analysis(filename, path_context)
+            return self._heuristic_image_analysis(filename, path_context, extracted_text)
 
         prompt = (
             f"Analyze this image file named '{filename}' (path: {path_context}).\n"
@@ -167,7 +168,7 @@ class OpenAIClient:
             return result
         except Exception as e:
             logger.warning("OpenAI vision analysis failed (%s); falling back to local heuristics", e)
-            return self._heuristic_image_analysis(filename, path_context)
+            return self._heuristic_image_analysis(filename, path_context, extracted_text)
 
     # --------------------------------------------------------------------------
     # Deterministic Heuristic Fallbacks (100% Offline, Zero Crashes)
@@ -264,42 +265,103 @@ class OpenAIClient:
         self,
         filename: str,
         path_context: str,
+        extracted_text: str = "",
     ) -> Dict[str, Any]:
-        """Offline heuristic analysis for images based on filename and directory context."""
+        """Offline heuristic analysis for images based on OCR text, filename, and directory context."""
         stem = Path(filename).stem
         lower_name = stem.lower()
         lower_path = path_context.lower()
-
-        if any(k in lower_name for k in ["screenshot", "screen shot", "snip", "captur"]):
-            doc_type = "screenshot"
-            suggested_folder = "Pictures/Screenshots"
-            topics = ["screenshot"]
-        elif any(k in lower_name for k in ["receipt", "invoice"]):
-            doc_type = "receipt"
-            suggested_folder = "Finance/Receipts"
-            topics = ["finance", "receipt"]
-        elif any(k in lower_name for k in ["diagram", "chart", "flowchart", "arch"]):
-            doc_type = "diagram"
-            suggested_folder = "Documents/Diagrams"
-            topics = ["diagram"]
-        elif any(k in lower_path for k in ["public", "assets", "static", "images"]):
-            doc_type = "web_asset"
-            suggested_folder = "Assets"
-            topics = ["web_asset"]
-        else:
-            doc_type = "photo"
-            suggested_folder = "Pictures"
-            topics = ["image"]
+        lower_text = (extracted_text or "").lower()
 
         clean_title = re.sub(r"[_\-]+", " ", stem).title()
+        summary = ""
+        entities: List[str] = []
+        topics: List[str] = []
+
+        # 1. OCR-driven classification (highest confidence)
+        if extracted_text and len(extracted_text.strip()) > 15:
+            # Extract meaningful lines
+            lines = [line.strip() for line in extracted_text.split("\n") if len(line.strip()) > 3]
+
+            # Detect academic/project poster
+            if any(k in lower_text for k in ["poster", "fyp", "final project", "final year project", "problem statement", "our solution", "ensemble", "deep convolutional", "analyzer", "methodology", "group members"]):
+                doc_type = "poster"
+                suggested_folder = "Projects/Posters"
+                topics = ["poster", "project", "presentation", "fyp"]
+                if "fyp" in lower_text or "final year project" in lower_text or "final project" in lower_text:
+                    topics.append("fyp")
+            elif any(k in lower_text for k in ["screenshot", "error", "exception", "traceback", "status 500", "status 404", "fastapi", "localhost", "http:"]):
+                doc_type = "screenshot"
+                suggested_folder = "Pictures/Screenshots"
+                topics = ["screenshot"]
+                if any(e in lower_text for e in ["error", "exception", "fail"]):
+                    topics.append("error")
+            elif any(k in lower_text for k in ["receipt", "invoice", "subtotal", "amount paid", "total due", "payment receipt", "balance due"]):
+                doc_type = "receipt"
+                suggested_folder = "Finance/Receipts"
+                topics = ["finance", "receipt"]
+            elif any(k in lower_text for k in ["diagram", "flowchart", "architecture", "component"]):
+                doc_type = "diagram"
+                suggested_folder = "Documents/Diagrams"
+                topics = ["diagram"]
+            else:
+                doc_type = "photo"
+                suggested_folder = "Pictures"
+                topics = ["image"]
+
+            # Derive headline title from first prominent lines
+            if lines:
+                # Find line that is not purely an address or tiny label
+                prominent_lines = [l for l in lines[:4] if len(l) > 8 and not re.match(r"^\d+$", l)]
+                if prominent_lines:
+                    clean_title = prominent_lines[0]
+                    if len(clean_title) > 65:
+                        clean_title = clean_title[:62] + "..."
+
+            # Extract recognized entities
+            found_caps = re.findall(r"\b[A-Z][a-zA-Z0-9_\-]{2,}\b", extracted_text[:1000])
+            for cap in found_caps[:5]:
+                if cap.lower() not in {"file", "text", "image", "the", "and"} and cap not in entities:
+                    entities.append(cap)
+
+            snippet = " ".join(lines[:2])
+            if len(snippet) > 220:
+                snippet = snippet[:217] + "..."
+            summary = f"{doc_type.replace('_', ' ').title()} depicting: {snippet}"
+            conf = 0.85
+        else:
+            # 2. Filename/Path-driven heuristic fallback
+            if any(k in lower_name for k in ["screenshot", "screen shot", "snip", "captur"]):
+                doc_type = "screenshot"
+                suggested_folder = "Pictures/Screenshots"
+                topics = ["screenshot"]
+            elif any(k in lower_name for k in ["receipt", "invoice"]):
+                doc_type = "receipt"
+                suggested_folder = "Finance/Receipts"
+                topics = ["finance", "receipt"]
+            elif any(k in lower_name for k in ["diagram", "chart", "flowchart", "arch"]):
+                doc_type = "diagram"
+                suggested_folder = "Documents/Diagrams"
+                topics = ["diagram"]
+            elif any(k in lower_path for k in ["public", "assets", "static", "images"]):
+                doc_type = "web_asset"
+                suggested_folder = "Assets"
+                topics = ["web_asset"]
+            else:
+                doc_type = "photo"
+                suggested_folder = "Pictures"
+                topics = ["image"]
+
+            summary = f"{doc_type.replace('_', ' ').title()} file: {filename}"
+            conf = 0.65
 
         return {
             "document_type": doc_type,
             "title": clean_title,
-            "summary": f"{doc_type.replace('_', ' ').title()} file: {filename}",
-            "entities": [],
+            "summary": summary,
+            "entities": entities,
             "topics": topics,
             "suggested_folder": suggested_folder,
-            "confidence": 0.65,
-            "analysis_source": "local_heuristic",
+            "confidence": conf,
+            "analysis_source": "local_heuristic" if not extracted_text else "local_ocr_heuristic",
         }

@@ -95,8 +95,27 @@ def _compute_recency_score(modified_at_iso: Optional[str]) -> float:
         return 0.20
 
 
+RETRIEVAL_STOPWORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "and", "or", "for", "of", "to",
+    "in", "on", "at", "by", "with", "from", "about", "into", "through", "during",
+    "before", "after", "above", "below", "up", "down", "out", "off", "over", "under",
+    "then", "here", "there", "when", "where", "why", "how", "all", "any", "both",
+    "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not",
+    "only", "own", "same", "so", "than", "too", "very", "can", "will", "just",
+    "should", "now", "my", "your", "his", "her", "their", "our", "its", "me",
+    "him", "them", "us", "find", "show", "search", "get", "where", "file", "files",
+    "document", "documents", "that", "this"
+}
+
+FORMAT_TOKENS = {
+    "pdf", "pdfs", "docx", "doc", "word", "png", "jpg", "jpeg", "webp", "gif", "txt", "md"
+}
+
+
 class HybridRetriever:
     """Hybrid retrieval engine combining dense vector search, FTS5, filename similarity, and metadata."""
+
+    MIN_SCORE_THRESHOLD: float = 0.35
 
     def __init__(
         self,
@@ -124,9 +143,15 @@ class HybridRetriever:
         if not cleaned_query:
             return []
 
+        # Extract tokens and filter out stopwords & format terms
+        raw_tokens = [t.lower() for t in re.findall(r"\b\w+\b", cleaned_query) if len(t) > 1]
+        content_tokens = [t for t in raw_tokens if t not in RETRIEVAL_STOPWORDS and t not in FORMAT_TOKENS]
+        fts_search_query = " ".join(content_tokens) if content_tokens else " ".join([t for t in raw_tokens if t not in RETRIEVAL_STOPWORDS])
+        topical_query = " ".join([t for t in re.findall(r"\b\w+\b", cleaned_query) if t.lower() not in RETRIEVAL_STOPWORDS and t.lower() not in FORMAT_TOKENS])
+
         # 1. Generate query embedding if not provided
         if query_embedding is None:
-            q_emb = self.embedding_engine.embed_text(cleaned_query)
+            q_emb = self.embedding_engine.embed_text(topical_query or cleaned_query)
         else:
             q_emb = query_embedding
 
@@ -143,22 +168,19 @@ class HybridRetriever:
                 val = float(dot_products[i])
                 semantic_scores[p] = max(0.0, min(1.0, val))
 
-        # 3. SQLite FTS5 Full-Text Retrieval
-        fts_scores = self.fts.search(cleaned_query, limit=limit * 3)
+        # 3. SQLite FTS5 Full-Text Retrieval using content tokens (stops PDF/stopword false positives)
+        fts_scores = self.fts.search(fts_search_query, limit=limit * 3) if fts_search_query else {}
 
-        # 4. Extract query tokens for filename & path matching
-        query_tokens = [t.lower() for t in re.findall(r"\b\w+\b", cleaned_query) if len(t) > 1]
-
-        # 5. Pool candidate paths from semantic hits, FTS hits, and repository files
+        # 4. Pool candidate paths from semantic hits, FTS hits, and repository files
         candidate_paths: Set[str] = set(semantic_scores.keys()).union(fts_scores.keys())
 
-        # Also pull recent or matching files from repository to ensure broad recall
+        # Also pull files matching meaningful content tokens from repository
         all_files = self.repository.list_files(limit=200)
         file_lookup: Dict[str, Any] = {f.path: f for f in all_files}
+        effective_tokens = content_tokens if content_tokens else raw_tokens
         for f in all_files:
-            # If filename or path has any query token overlap, add to candidates
             lower_name = f.filename.lower()
-            if any(qt in lower_name for qt in query_tokens):
+            if any(qt in lower_name for qt in effective_tokens):
                 candidate_paths.add(f.path)
 
         # Filter out files that physically no longer exist
@@ -194,7 +216,7 @@ class HybridRetriever:
             # Calculate individual signal scores
             sem_score = semantic_scores.get(p_str, 0.0)
             fts_score = fts_scores.get(p_str, 0.0)
-            fn_score = _compute_filename_relevance(query_tokens, filename, folder_path)
+            fn_score = _compute_filename_relevance(effective_tokens, filename, folder_path)
             rec_score = _compute_recency_score(mod_at)
 
             # Metadata matching score (extension / doc_type)
@@ -240,6 +262,22 @@ class HybridRetriever:
                 + (0.05 * rec_score if prefer_recent else 0.02 * rec_score)
             )
 
+            # Topical Grounding:
+            # If the user queried specific content concepts (e.g. "agent hackathon", "poster FYP"),
+            # a candidate must actually match the topic or have strong semantic similarity.
+            # Unrelated files cannot piggyback on extension or generic vector proximity.
+            has_topical_grounding = False
+            if not content_tokens:
+                has_topical_grounding = True
+            else:
+                searchable_haystack = (filename + " " + title + " " + summary).lower()
+                token_matches = any(ct in searchable_haystack for ct in content_tokens)
+                if token_matches or fts_score > 0.10 or sem_score >= 0.72:
+                    has_topical_grounding = True
+
+            if not has_topical_grounding:
+                final_score *= 0.08  # Discount files with no topical relation
+
             # Hard filtering: if user specifically requested an extension (e.g. .pdf) or type (e.g. resume)
             # penalize candidates that do not match the explicit constraint
             if clean_extensions and not has_ext_match:
@@ -249,11 +287,10 @@ class HybridRetriever:
 
             # Formulate user-facing match reasons
             match_reasons: List[str] = []
-            if sem_score > 0.60:
+            if sem_score > 0.65:
                 match_reasons.append("Semantic match")
-            if fts_score > 0.40:
-                # Find which query token matched
-                matching_terms = [qt for qt in query_tokens if qt in (title + " " + summary + " " + filename).lower()]
+            if fts_score > 0.20:
+                matching_terms = [ct for ct in content_tokens if ct in (title + " " + summary + " " + filename).lower()]
                 if matching_terms:
                     match_reasons.append(f"Keyword: {', '.join(matching_terms[:2])}")
                 else:
@@ -289,6 +326,7 @@ class HybridRetriever:
             )
             results.append(candidate)
 
-        # Sort descending by composite score
-        results.sort(key=lambda c: c.score, reverse=True)
-        return results[:limit]
+        # Filter out candidates below relevance threshold
+        qualified = [c for c in results if c.score >= self.MIN_SCORE_THRESHOLD]
+        qualified.sort(key=lambda c: c.score, reverse=True)
+        return qualified[:limit]

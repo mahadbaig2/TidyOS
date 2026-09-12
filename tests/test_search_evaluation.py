@@ -198,3 +198,81 @@ def test_protected_files_are_searchable_and_flagged(tmp_path: Path):
     assert any("protected" in reason.lower() for reason in protected_hit.match_reasons)
 
     repo.close()
+
+
+def test_nonexistent_query_returns_no_results(tmp_path: Path):
+    """Verify that searching for a non-existent file returns 0 results and avoids false positives."""
+    corpus = create_demo_corpus(tmp_path / "CorpusEmpty")
+    db_path = tmp_path / "empty_eval.db"
+    repo = StorageRepository(db_path)
+
+    # Add only downloads with standard baseline files (no hackathon file)
+    root = repo.add_managed_root(corpus["downloads"])
+    scanner = FilesystemScanner(repo)
+    scanner.scan_root(root)
+
+    fts = FTSIndexManager(repo)
+    engine = LocalEmbeddingEngine.get_instance()
+    all_files = repo.list_files(limit=100)
+    for f in all_files:
+        p = Path(f.path)
+        fts.index_file(f.path, p.name, p.stem, f"Generic file: {p.name}", [], [], "")
+        rep = f"File: {p.name}"
+        v = engine.embed_text(rep)
+        repo.save_file_embedding(f.path, f.sha256_hash or "h", engine.model_name, v, rep)
+
+    retriever = HybridRetriever(repository=repo, embedding_engine=engine, fts_manager=fts)
+    agent = SearchAgent(retriever=retriever)
+
+    # Search for an agent hackathon PDF that does NOT exist in downloads
+    results = agent.search("the PDF about the agent hackathon")
+    # Must NOT falsely match baseline invoices or random files
+    assert len(results) == 0, f"Expected 0 results for non-existent file, got {len(results)}"
+
+    repo.close()
+
+
+def test_poster_search_with_ocr_and_fyp_topic(tmp_path: Path):
+    """Verify that visual poster and FYP queries rank the poster at #1."""
+    corpus = create_demo_corpus(tmp_path / "CorpusPoster")
+    db_path = tmp_path / "poster_eval.db"
+    repo = StorageRepository(db_path)
+
+    root = repo.add_managed_root(corpus["downloads"])
+    scanner = FilesystemScanner(repo)
+    scanner.scan_root(root)
+
+    # Create a simulated FYP poster image
+    poster_path = corpus["downloads"] / "fyp_capstone_poster.png"
+    poster_path.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
+
+    u_poster = FileUnderstanding(
+        file_path=str(poster_path),
+        sha256_hash="poster_hash_123",
+        document_type="poster",
+        title="Autonomous Agent Systems Final Year Project Poster",
+        summary="Final Year Project (FYP) poster describing architecture and neural evaluation for multi-agent systems.",
+        topics=["FYP", "poster", "presentation", "project"],
+        entities=["FYP"],
+        confidence=0.92,
+    )
+    repo.save_file_understanding(u_poster)
+
+    fts = FTSIndexManager(repo)
+    engine = LocalEmbeddingEngine.get_instance()
+    fts.index_file(str(poster_path), poster_path.name, u_poster.title, u_poster.summary, u_poster.topics, u_poster.entities, u_poster.summary)
+    rep = build_semantic_search_representation(u_poster, poster_path.name, str(poster_path.parent))
+    v = engine.embed_text(rep)
+    repo.save_file_embedding(str(poster_path), u_poster.sha256_hash, engine.model_name, v, rep)
+
+    retriever = HybridRetriever(repository=repo, embedding_engine=engine, fts_manager=fts)
+    agent = SearchAgent(retriever=retriever)
+
+    results = agent.search("the poster for my FYP")
+    assert len(results) > 0
+    top = results[0]
+    assert top.filename == "fyp_capstone_poster.png"
+    assert top.document_type == "poster"
+    assert any("poster" in r.lower() or "fyp" in r.lower() for r in top.match_reasons)
+
+    repo.close()

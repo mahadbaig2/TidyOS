@@ -93,15 +93,29 @@ class ImageExtractor(BaseExtractor):
                     "resized_for_vision": needs_resize,
                 }
 
-                summary_text = (
-                    f"Image: {path.name} | Dimensions: {orig_width}x{orig_height} | Format: {img_format}"
-                )
+                # Attempt local Windows native OCR (zero cloud dependencies, native OS capability)
+                ocr_text = ""
+                try:
+                    import winocr
+                    res = winocr.recognize_pil_sync(img, "en")
+                    if isinstance(res, dict) and "text" in res:
+                        ocr_text = (res["text"] or "").strip()
+                except Exception as ocr_err:
+                    logger.debug("Local Windows OCR skipped for %s: %s", path, ocr_err)
+
+                if ocr_text:
+                    from tidyos.indexing.extractors.base import normalize_extracted_text
+                    clean_ocr = normalize_extracted_text(ocr_text)[:max_chars]
+                    metadata["ocr_text"] = clean_ocr
+                    effective_text = f"Image: {path.name}\nExtracted Text:\n{clean_ocr}"
+                else:
+                    effective_text = f"Image: {path.name} | Dimensions: {orig_width}x{orig_height} | Format: {img_format}"
 
                 return ExtractedContent(
                     file_path=str(path),
-                    text=summary_text,
-                    char_count=len(summary_text),
-                    is_truncated=False,
+                    text=effective_text,
+                    char_count=len(effective_text),
+                    is_truncated=len(ocr_text) > max_chars,
                     is_valid=True,
                     metadata=metadata,
                 )

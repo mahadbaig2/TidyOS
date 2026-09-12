@@ -122,6 +122,7 @@ class LibrarianAgent:
                 filename=path.name,
                 mime_type=content.metadata.get("mime_type", "image/jpeg"),
                 path_context=effective_context,
+                extracted_text=content.metadata.get("ocr_text", ""),
             )
         else:
             # Document analysis

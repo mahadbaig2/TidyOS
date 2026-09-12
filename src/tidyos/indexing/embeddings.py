@@ -113,6 +113,7 @@ def build_semantic_search_representation(
     understanding: Any,
     filename: Optional[str] = None,
     path_context: Optional[str] = None,
+    extracted_snippet: Optional[str] = None,
 ) -> str:
     """Combine structured semantic fields into an optimal text representation for embedding."""
     fn = filename or getattr(understanding, "title", "File")
@@ -138,5 +139,9 @@ def build_semantic_search_representation(
         parts.append(f"Entities: {entities_str}")
     if summary:
         parts.append(f"Summary: {summary}")
+    if extracted_snippet:
+        cleaned_snippet = extracted_snippet.strip()
+        if cleaned_snippet:
+            parts.append(f"Content: {cleaned_snippet[:400]}")
 
     return "\n".join(parts)

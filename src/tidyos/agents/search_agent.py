@@ -62,24 +62,30 @@ def parse_query_heuristics(raw_query: str) -> StructuredQuery:
     prefer_recent = False
     entities: List[str] = []
 
-    # 1. Detect file formats
+    # 1. Detect file formats & visual document types
     if re.search(r"\bpdf\b|\bpdfs\b", lower):
         file_extensions.append(".pdf")
     if re.search(r"\bdocx?\b|\bword\b", lower):
         file_extensions.append(".docx")
-    if re.search(r"\bscreenshot\b|\bscreenshots\b", lower):
+    if re.search(r"\bposters?\b|\bbanners?\b|\bflyers?\b|\binfographics?\b|\bpresentations?\b", lower):
+        document_types.extend(["poster", "diagram", "photo"])
+        file_extensions.extend([".png", ".jpg", ".jpeg", ".webp", ".pdf"])
+    elif re.search(r"\bscreenshot\b|\bscreenshots\b", lower):
         document_types.append("screenshot")
         file_extensions.extend([".png", ".jpg", ".jpeg"])
     elif re.search(r"\bimages?\b|\bphotos?\b|\bpng\b|\bjpg\b|\bjpeg\b", lower):
         file_extensions.extend([".png", ".jpg", ".jpeg"])
 
-    # 2. Detect document types
+    # 2. Detect document types & academic project markers
     if re.search(r"\binvoices?\b|\bbills?\b|\breceipts?\b", lower):
         document_types.append("invoice")
     if re.search(r"\bresumes?\b|\bcvs?\b", lower):
         document_types.append("resume")
     if re.search(r"\bnotes?\b", lower) and "screenshot" not in document_types:
         document_types.append("notes")
+    if re.search(r"\bfyp\b|\bfinal year project\b|\bcapstone\b|\bthesis\b", lower):
+        if "FYP" not in entities:
+            entities.append("FYP")
 
     # 3. Detect recency preferences
     if re.search(r"\blatest\b|\brecent\b|\btoday\b|\byesterday\b|\bthis month\b|\bthis week\b", lower):
@@ -102,10 +108,19 @@ def parse_query_heuristics(raw_query: str) -> StructuredQuery:
     for pat in filler_patterns:
         cleaned = re.sub(pat, "", cleaned, flags=re.IGNORECASE)
 
-    # Extract keywords
-    words = [w for w in re.findall(r"\b[a-zA-Z0-9_\-]{2,}\b", cleaned) if w.lower() not in {
-        "find", "show", "where", "the", "about", "with", "that", "this", "from", "for", "and"
-    }]
+    # Stopwords set to prevent keyword and FTS pollution
+    query_stopwords = {
+        "find", "show", "search", "get", "where", "file", "files", "the", "about",
+        "with", "that", "this", "from", "for", "and", "or", "in", "on", "at", "by",
+        "to", "of", "my", "your", "his", "her", "their", "our", "its", "me", "a", "an",
+        "is", "are", "was", "were", "it", "into", "during", "before", "after", "document"
+    }
+
+    # Extract clean topical keywords
+    words = [
+        w for w in re.findall(r"\b[a-zA-Z0-9_\-]{2,}\b", cleaned)
+        if w.lower() not in query_stopwords
+    ]
 
     return StructuredQuery(
         raw_query=text,
