@@ -14,6 +14,11 @@ from tidyos.agents.search_agent import (
     SearchResult,
     StructuredQuery,
 )
+from tidyos.agents.organizer import (
+    OrganizerAgent,
+    OrganizationProposal,
+    sanitize_windows_filename,
+)
 from tidyos.agents.graph import create_safety_graph
 from tidyos.agents.search_graph import create_search_graph, SearchGraphState
 
@@ -23,6 +28,9 @@ __all__ = [
     "GuardianExplanation",
     "FileUnderstanding",
     "LibrarianAgent",
+    "OrganizerAgent",
+    "OrganizationProposal",
+    "sanitize_windows_filename",
     "SearchAgent",
     "SearchResult",
     "StructuredQuery",

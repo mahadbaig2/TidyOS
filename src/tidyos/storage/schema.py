@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS preferences (
 CREATE TABLE IF NOT EXISTS review_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id INTEGER REFERENCES files(id) ON DELETE CASCADE,
+    source_path TEXT,
+    current_filename TEXT,
     suggested_filename TEXT,
     suggested_destination TEXT,
     confidence REAL,
@@ -188,6 +190,13 @@ def init_db(db_path: Union[str, Path]) -> sqlite3.Connection:
 
     # Execute table creation
     conn.executescript(CREATE_TABLES_SQL)
+
+    # Migrations for existing databases
+    for col in ("source_path", "current_filename"):
+        try:
+            conn.execute(f"ALTER TABLE review_queue ADD COLUMN {col} TEXT;")
+        except Exception:
+            pass
 
     # Record schema version if not recorded
     cur = conn.cursor()

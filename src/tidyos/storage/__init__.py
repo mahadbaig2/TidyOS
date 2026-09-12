@@ -6,6 +6,7 @@ from tidyos.storage.models import (
     FileRecord,
     ProtectedRoot,
     ActionRecord,
+    ReviewQueueItem,
 )
 from tidyos.storage.roots import (
     RootValidationError,
@@ -22,6 +23,7 @@ __all__ = [
     "FileRecord",
     "ProtectedRoot",
     "ActionRecord",
+    "ReviewQueueItem",
     "RootValidationError",
     "validate_candidate_root",
     "normalize_root_path",

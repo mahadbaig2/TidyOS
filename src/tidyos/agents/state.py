@@ -42,6 +42,18 @@ class TidyOSState(TypedDict, total=False):
     confidence: float
     requires_review: bool
 
+    # Organizer proposal state
+    proposed_filename: Optional[str]
+    proposed_destination: Optional[str]
+    organization_reasoning: Optional[str]
+    organization_confidence: Optional[float]
+    organization_needed: Optional[bool]
+    requires_folder_creation: Optional[bool]
+    signals_used: Optional[List[str]]
+    action_status: Optional[str]
+    action_id: Optional[int]
+
     # Pipeline outcome status
     status: str
     errors: List[str]
+

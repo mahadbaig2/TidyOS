@@ -76,10 +76,26 @@ class ActionRecord(BaseModel):
     id: Optional[int] = None
     source_path: str
     dest_path: str
-    action_type: str = "MOVE"  # "MOVE" | "RENAME"
+    action_type: str = "MOVE"  # "MOVE" | "RENAME" | "MOVE_AND_RENAME"
     status: str = "PENDING"  # "PENDING" | "APPLIED" | "UNDONE" | "REJECTED" | "FAILED"
     agent_rationale: Optional[str] = None
     confidence: Optional[float] = None
     created_at: str = Field(default_factory=utc_now_iso)
     executed_at: Optional[str] = None
     undone_at: Optional[str] = None
+
+
+class ReviewQueueItem(BaseModel):
+    """Model representing an item in the human-in-the-loop review queue."""
+
+    id: Optional[int] = None
+    file_id: Optional[int] = None
+    source_path: str = ""
+    current_filename: str = ""
+    suggested_filename: str
+    suggested_destination: str
+    confidence: float = 0.0
+    reason: str = ""
+    status: str = "PENDING"  # "PENDING" | "APPROVED" | "REJECTED" | "APPLIED"
+    created_at: str = Field(default_factory=utc_now_iso)
+

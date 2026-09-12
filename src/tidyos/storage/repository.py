@@ -14,6 +14,7 @@ from tidyos.storage.models import (
     FileRecord,
     ProtectedRoot,
     ActionRecord,
+    ReviewQueueItem,
     utc_now_iso,
 )
 from tidyos.storage.schema import init_db
@@ -499,6 +500,176 @@ class StorageRepository:
             )
             for r in rows
         ]
+
+    def get_action(self, action_id: int) -> Optional[ActionRecord]:
+        """Fetch a specific action by ID."""
+        conn = self.get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM actions WHERE id = ?", (action_id,))
+        r = cur.fetchone()
+        if not r:
+            return None
+        return ActionRecord(
+            id=r["id"],
+            source_path=r["source_path"],
+            dest_path=r["dest_path"],
+            action_type=r["action_type"],
+            status=r["status"],
+            agent_rationale=r["agent_rationale"],
+            confidence=r["confidence"],
+            created_at=r["created_at"],
+            executed_at=r["executed_at"],
+            undone_at=r["undone_at"],
+        )
+
+    def update_action_status(self, action_id: int, status: str, undone_at: Optional[str] = None):
+        """Update status and timestamps for an action."""
+        conn = self.get_connection()
+        with conn:
+            if undone_at:
+                conn.execute(
+                    "UPDATE actions SET status = ?, undone_at = ? WHERE id = ?",
+                    (status, undone_at, action_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE actions SET status = ? WHERE id = ?",
+                    (status, action_id),
+                )
+
+    # -------------------------------------------------------------------------
+    # Review Queue
+    # -------------------------------------------------------------------------
+
+    def add_review_item(self, item: ReviewQueueItem) -> int:
+        """Insert proposal item into the human review queue."""
+        conn = self.get_connection()
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO review_queue (
+                    file_id, source_path, current_filename, suggested_filename,
+                    suggested_destination, confidence, reason, status, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item.file_id,
+                    item.source_path,
+                    item.current_filename,
+                    item.suggested_filename,
+                    item.suggested_destination,
+                    item.confidence,
+                    item.reason,
+                    item.status,
+                    item.created_at,
+                ),
+            )
+            return cur.lastrowid
+
+    def list_review_items(self, status: str = "PENDING") -> List[ReviewQueueItem]:
+        """List review queue items by status."""
+        conn = self.get_connection()
+        cur = conn.cursor()
+        if status:
+            cur.execute(
+                "SELECT * FROM review_queue WHERE status = ? ORDER BY id DESC",
+                (status,),
+            )
+        else:
+            cur.execute("SELECT * FROM review_queue ORDER BY id DESC")
+        rows = cur.fetchall()
+        return [
+            ReviewQueueItem(
+                id=r["id"],
+                file_id=r["file_id"],
+                source_path=r["source_path"] or "",
+                current_filename=r["current_filename"] or "",
+                suggested_filename=r["suggested_filename"],
+                suggested_destination=r["suggested_destination"],
+                confidence=r["confidence"] or 0.0,
+                reason=r["reason"] or "",
+                status=r["status"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+    def update_review_item_status(self, item_id: int, status: str):
+        """Update review item status (e.g. APPROVED, REJECTED, APPLIED)."""
+        conn = self.get_connection()
+        with conn:
+            conn.execute("UPDATE review_queue SET status = ? WHERE id = ?", (status, item_id))
+
+    def relocate_file_record(
+        self,
+        old_path: str,
+        new_path: str,
+        new_filename: str,
+        new_relative_path: Optional[str] = None,
+        new_directory_id: Optional[int] = None,
+    ) -> bool:
+        """Relocate file references in files, file_understandings, file_embeddings, and FTS tables."""
+        conn = self.get_connection()
+        old_str = str(old_path)
+        new_str = str(new_path)
+        now = utc_now_iso()
+
+        with conn:
+            cur = conn.cursor()
+            # 1. Update files table
+            cur.execute(
+                """
+                UPDATE files
+                SET path = ?,
+                    filename = ?,
+                    relative_path = COALESCE(?, relative_path),
+                    directory_id = COALESCE(?, directory_id),
+                    modified_at = ?
+                WHERE path = ?
+                """,
+                (new_str, new_filename, new_relative_path, new_directory_id, now, old_str),
+            )
+
+            # 2. Update file_understandings
+            cur.execute(
+                "UPDATE file_understandings SET file_path = ? WHERE file_path = ?",
+                (new_str, old_str),
+            )
+
+            # 3. Update file_embeddings
+            cur.execute(
+                "UPDATE file_embeddings SET file_path = ? WHERE file_path = ?",
+                (new_str, old_str),
+            )
+
+            # 4. Update files_fts
+            cur.execute(
+                "SELECT title, summary, topics, entities, extracted_text FROM files_fts WHERE file_path = ?",
+                (old_str,),
+            )
+            row = cur.fetchone()
+            if row:
+                cur.execute("DELETE FROM files_fts WHERE file_path = ?", (old_str,))
+                cur.execute(
+                    """
+                    INSERT INTO files_fts (
+                        file_path, filename, title, summary, topics, entities, extracted_text
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        new_str,
+                        new_filename,
+                        row["title"],
+                        row["summary"],
+                        row["topics"],
+                        row["entities"],
+                        row["extracted_text"],
+                    ),
+                )
+            return True
 
     # -------------------------------------------------------------------------
     # Overall System Statistics

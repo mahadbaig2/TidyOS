@@ -1,0 +1,377 @@
+"""Organizer Agent for TidyOS.
+
+PROBABILISTIC INTELLIGENCE. ZERO MUTATION AUTHORITY.
+Answers: "Where should this file belong?"
+Advisory only. Proposes safe, structured reorganization plans prioritizing existing organization.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+from pydantic import BaseModel, Field
+
+from tidyos.storage.models import DirectoryRecord
+from tidyos.storage.repository import StorageRepository
+from tidyos.agents.librarian import FileUnderstanding
+from tidyos.logging_config import get_logger
+
+logger = get_logger("agents.organizer")
+
+# Windows reserved names and forbidden characters
+FORBIDDEN_WIN_CHARS = r'<>:"/\\|?*'
+RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def sanitize_windows_filename(name: str, default_ext: str = "") -> str:
+    """Sanitize a candidate string into a valid, safe Windows filename."""
+    if not name or not name.strip():
+        return f"file_{default_ext.lstrip('.')}" if default_ext else "unnamed_file"
+
+    # Separate existing extension if present
+    p = Path(name)
+    stem = p.stem
+    ext = p.suffix if p.suffix else (f".{default_ext.lstrip('.')}" if default_ext else "")
+
+    # Remove traversal sequences and forbidden characters
+    clean_stem = re.sub(r"[<>:\"/\\|?*]", "_", stem)
+    # Replace multiple underscores or spaces with single underscore
+    clean_stem = re.sub(r"[\s_]+", "_", clean_stem).strip("._ ")
+
+    if not clean_stem:
+        clean_stem = "organized_file"
+
+    # Check Windows reserved device names
+    if clean_stem.upper() in RESERVED_NAMES:
+        clean_stem = f"{clean_stem}_file"
+
+    # Ensure length constraint (max 200 chars for stem)
+    clean_stem = clean_stem[:200].rstrip(". ")
+
+    clean_ext = re.sub(r"[<>:\"/\\|?*]", "", ext).lower()
+    return f"{clean_stem}{clean_ext}"
+
+
+class OrganizationProposal(BaseModel):
+    """Structured organization proposal produced by OrganizerAgent."""
+
+    file_path: str
+    current_filename: str
+    proposed_filename: str
+    proposed_destination: str  # Destination directory path
+    reasoning: str
+    confidence: float
+    organization_needed: bool = True
+    requires_folder_creation: bool = False
+    signals_used: List[str] = Field(default_factory=list)
+
+    @property
+    def proposed_full_path(self) -> str:
+        """Complete target path combining destination and proposed filename."""
+        return str(Path(self.proposed_destination) / self.proposed_filename)
+
+
+class OrganizerAgent:
+    """Organizer Agent advising file destinations based on semantic understanding and existing folder structures.
+
+    HARD ARCHITECTURAL INVARIANT:
+    OrganizerAgent is purely ADVISORY. It has ZERO filesystem mutation authority.
+    It returns OrganizationProposal objects for review or SafetyPolicy validation.
+    """
+
+    def __init__(
+        self,
+        repository: Optional[StorageRepository] = None,
+        confidence_threshold: float = 0.85,
+    ):
+        self.repository = repository
+        self.confidence_threshold = confidence_threshold
+
+    def propose(
+        self,
+        file_path: str,
+        understanding: Optional[FileUnderstanding] = None,
+        candidate_roots: Optional[List[str]] = None,
+    ) -> OrganizationProposal:
+        """Evaluate a file and generate an advisory organization proposal."""
+        path_obj = Path(file_path)
+        current_filename = path_obj.name
+        ext = path_obj.suffix.lower()
+        signals: List[str] = []
+
+        # 1. Inspect existing folder structures in managed roots
+        existing_folders = self._get_existing_folders(candidate_roots)
+
+        # 2. Extract semantic signals from understanding
+        doc_type = understanding.document_type if understanding else "unknown"
+        title = understanding.title if understanding else ""
+        entities = understanding.entities if understanding else []
+        topics = understanding.topics if understanding else []
+        suggested_folder = understanding.suggested_folder if understanding else ""
+        lib_conf = understanding.confidence if understanding else 0.5
+
+        if doc_type and doc_type != "unknown":
+            signals.append(f"doc_type:{doc_type}")
+        if entities:
+            signals.append(f"entities:{','.join(entities[:3])}")
+        if topics:
+            signals.append(f"topics:{','.join(topics[:3])}")
+
+        # 3. Formulate Windows-safe proposed filename
+        proposed_filename = self._generate_filename(
+            current_filename=current_filename,
+            title=title,
+            entities=entities,
+            doc_type=doc_type,
+            ext=ext,
+            signals=signals,
+        )
+
+        # 4. Resolve best destination (Existing Organization First)
+        best_dest, requires_creation, match_reason = self._resolve_destination(
+            path_obj=path_obj,
+            existing_folders=existing_folders,
+            doc_type=doc_type,
+            entities=entities,
+            suggested_folder=suggested_folder,
+            candidate_roots=candidate_roots,
+            signals=signals,
+        )
+
+        # 5. Check if organization is actually needed
+        dest_path_obj = Path(best_dest)
+        is_same_dest = dest_path_obj.resolve() == path_obj.parent.resolve() if path_obj.exists() and dest_path_obj.exists() else str(dest_path_obj).lower() == str(path_obj.parent).lower()
+        is_same_name = proposed_filename.lower() == current_filename.lower()
+        org_needed = not (is_same_dest and is_same_name)
+
+        # 6. Calculate proposal confidence
+        proposal_conf = self._calculate_confidence(
+            lib_conf=lib_conf,
+            requires_creation=requires_creation,
+            has_entities=bool(entities),
+            has_doc_type=bool(doc_type and doc_type != "unknown"),
+        )
+
+        # 7. Compose detailed reasoning
+        reasoning = self._compose_reasoning(
+            current_filename=current_filename,
+            proposed_filename=proposed_filename,
+            doc_type=doc_type,
+            entities=entities,
+            match_reason=match_reason,
+            requires_creation=requires_creation,
+        )
+
+        return OrganizationProposal(
+            file_path=str(path_obj),
+            current_filename=current_filename,
+            proposed_filename=proposed_filename,
+            proposed_destination=str(dest_path_obj),
+            reasoning=reasoning,
+            confidence=proposal_conf,
+            organization_needed=org_needed,
+            requires_folder_creation=requires_creation,
+            signals_used=signals,
+        )
+
+    # -------------------------------------------------------------------------
+    # Internal Heuristics & Resolution
+    # -------------------------------------------------------------------------
+
+    def _get_existing_folders(self, candidate_roots: Optional[List[str]] = None) -> List[str]:
+        """Fetch discovered existing folders from repository or search nearby folders."""
+        folders = []
+        if self.repository:
+            try:
+                db_folders = self.repository.list_folders()
+                folders = [f.path for f in db_folders if f.is_present]
+            except Exception as e:
+                logger.warning("Could not list folders from repository: %s", e)
+
+        # Also inspect candidate root filesystem directly if DB has few folders
+        if not folders and candidate_roots:
+            for r in candidate_roots:
+                rp = Path(r)
+                if rp.exists() and rp.is_dir():
+                    try:
+                        for child in rp.glob("**/*"):
+                            if child.is_dir() and not child.name.startswith("."):
+                                folders.append(str(child))
+                    except Exception:
+                        pass
+        return folders
+
+    def _generate_filename(
+        self,
+        current_filename: str,
+        title: str,
+        entities: List[str],
+        doc_type: str,
+        ext: str,
+        signals: List[str],
+    ) -> str:
+        """Synthesize a concise, informative, Windows-safe filename."""
+        cur_p = Path(current_filename)
+        cur_stem = cur_p.stem
+
+        # Detect generic default filenames (e.g. document (17), invoice (1), download, image_001)
+        is_generic = bool(
+            re.search(r"^(document|file|download|invoice|untitled|screenshot|scan|image)[\s_\-\(\)\d]*$", cur_stem, re.IGNORECASE)
+            or cur_stem.isdigit()
+            or len(cur_stem) <= 3
+        )
+
+        if not is_generic and len(cur_stem) > 5:
+            # If the user's filename is already descriptive, sanitize and preserve its core naming
+            return sanitize_windows_filename(current_filename, ext)
+
+        # Synthesize from title if available and meaningful
+        if title and title.lower() not in {"untitled", "unknown document", "document", "image"}:
+            signals.append("filename_from_title")
+            return sanitize_windows_filename(title, ext)
+
+        # Synthesize from entities + doc_type
+        parts = []
+        if entities:
+            parts.append(entities[0].replace(" ", "_"))
+        if doc_type and doc_type not in {"unknown", "data"}:
+            parts.append(doc_type.capitalize())
+
+        if parts:
+            signals.append("filename_from_entities")
+            return sanitize_windows_filename("_".join(parts), ext)
+
+        # Fallback to sanitized current filename
+        return sanitize_windows_filename(current_filename, ext)
+
+    def _resolve_destination(
+        self,
+        path_obj: Path,
+        existing_folders: List[str],
+        doc_type: str,
+        entities: List[str],
+        suggested_folder: str,
+        candidate_roots: Optional[List[str]],
+        signals: List[str],
+    ) -> Tuple[str, bool, str]:
+        """Resolve destination directory preferring existing folder hierarchies."""
+        # 1. Existing Organization First: Search for exact or subfolder matches in existing folders
+        best_match = None
+        best_score = 0
+        match_reason = "Matched existing folder structure"
+
+        # Look for entity-specific subfolder (e.g. "Vercel" inside an Invoices folder)
+        normalized_entities = [e.lower().replace(" ", "") for e in entities]
+        norm_type = doc_type.lower()
+
+        for folder_str in existing_folders:
+            f_norm = folder_str.lower().replace("\\", "/")
+            score = 0
+
+            # Match entity in folder name
+            for ent in normalized_entities:
+                if ent and ent in f_norm:
+                    score += 50
+                    signals.append(f"entity_match:{ent}")
+
+            # Match document type in folder name (e.g. "invoices", "finance", "receipts", "contracts")
+            if norm_type in f_norm:
+                score += 30
+            elif norm_type == "invoice" and ("finance" in f_norm or "billing" in f_norm):
+                score += 25
+            elif norm_type == "resume" and ("careers" in f_norm or "jobs" in f_norm or "hr" in f_norm):
+                score += 25
+            elif norm_type == "screenshot" and ("pictures" in f_norm or "screenshots" in f_norm or "images" in f_norm):
+                score += 25
+
+            if score > best_score:
+                best_score = score
+                best_match = folder_str
+
+        # If a strong existing folder match was found (>= 50), use it directly
+        if best_match and best_score >= 50:
+            signals.append("existing_folder_exact_match")
+            return best_match, False, f"Matched existing folder: {Path(best_match).name}"
+
+        # 2. If moderate match found (>= 25)
+        if best_match and best_score >= 25:
+            signals.append("existing_folder_type_match")
+            return best_match, False, f"Matched existing category folder: {Path(best_match).name}"
+
+        # 3. Anchor to an existing root or user Documents folder
+        anchor_root = candidate_roots[0] if candidate_roots else str(path_obj.parent)
+        parent_dir = path_obj.parent
+        if "downloads" in str(parent_dir).lower():
+            # If current file is in Downloads, anchor to user Documents if available
+            sibling_docs = parent_dir.parent / "Documents"
+            if sibling_docs.exists() and sibling_docs.is_dir():
+                anchor_root = str(sibling_docs)
+
+        # 4. Fallback to Librarian's suggested_folder
+        if suggested_folder:
+            clean_rel = suggested_folder.replace("\\", "/").strip("/")
+            target_dest = Path(anchor_root) / clean_rel
+            requires_creation = not target_dest.exists()
+            signals.append("suggested_folder_used")
+            return str(target_dest), requires_creation, f"Suggested category path '{clean_rel}'"
+
+        # 5. Default categorization based on doc_type
+        type_defaults = {
+            "invoice": "Finance/Invoices",
+            "receipt": "Finance/Receipts",
+            "contract": "Legal/Contracts",
+            "resume": "Documents/Resumes",
+            "report": "Documents/Reports",
+            "screenshot": "Pictures/Screenshots",
+            "photo": "Pictures",
+            "source_code": "Projects",
+            "documentation": "Documents/Documentation",
+        }
+        rel_cat = type_defaults.get(doc_type, "Organized")
+        target_dest = Path(anchor_root) / rel_cat
+        requires_creation = not target_dest.exists()
+        signals.append("default_type_path_used")
+        return str(target_dest), requires_creation, f"Organized into category '{rel_cat}'"
+
+    def _calculate_confidence(
+        self,
+        lib_conf: float,
+        requires_creation: bool,
+        has_entities: bool,
+        has_doc_type: bool,
+    ) -> float:
+        """Calculate overall proposal confidence."""
+        base = lib_conf if lib_conf > 0.0 else 0.8
+        if has_doc_type:
+            base = max(base, 0.85)
+        if has_entities:
+            base = min(1.0, base + 0.05)
+        if requires_creation:
+            base = max(0.6, base - 0.1)  # Lower confidence if new folder must be created
+        return round(float(base), 2)
+
+    def _compose_reasoning(
+        self,
+        current_filename: str,
+        proposed_filename: str,
+        doc_type: str,
+        entities: List[str],
+        match_reason: str,
+        requires_creation: bool,
+    ) -> str:
+        """Compose human-readable reasoning explaining why the file should be reorganized."""
+        parts = []
+        if doc_type and doc_type != "unknown":
+            ent_str = f" from {entities[0]}" if entities else ""
+            parts.append(f"Identified as {doc_type}{ent_str}.")
+        parts.append(match_reason + ".")
+        if requires_creation:
+            parts.append("Requires creating a new destination folder.")
+        if proposed_filename != current_filename:
+            parts.append(f"Renaming to descriptive title '{proposed_filename}'.")
+        return " ".join(parts)

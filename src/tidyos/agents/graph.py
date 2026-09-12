@@ -8,6 +8,7 @@ from langgraph.graph import StateGraph, START, END
 from tidyos.agents.state import TidyOSState
 from tidyos.agents.guardian import GuardianAgent
 from tidyos.agents.librarian import LibrarianAgent, FileUnderstanding
+from tidyos.agents.organizer import OrganizerAgent, OrganizationProposal
 from tidyos.logging_config import get_logger
 
 logger = get_logger("agents.graph")
@@ -16,8 +17,9 @@ logger = get_logger("agents.graph")
 def create_safety_graph(
     guardian_agent: GuardianAgent,
     librarian_agent: Optional[LibrarianAgent] = None,
+    organizer_agent: Optional[OrganizerAgent] = None,
 ):
-    """Construct and compile LangGraph workflow for safety verification and semantic indexing."""
+    """Construct and compile LangGraph workflow for safety verification, semantic indexing, and organization."""
 
     builder = StateGraph(TidyOSState)
 
@@ -96,7 +98,33 @@ def create_safety_graph(
             "requires_review": False,
         }
         if librarian_agent:
-            result.update(_run_librarian(state))
+            lib_res = _run_librarian(state)
+            result.update(lib_res)
+
+            # Generate organization proposal if organizer_agent is configured
+            if organizer_agent:
+                file_path = state.get("file_path", "")
+                understanding = FileUnderstanding(
+                    file_path=file_path,
+                    sha256_hash="",
+                    document_type=lib_res.get("document_type", "unknown"),
+                    title=lib_res.get("title", ""),
+                    summary=lib_res.get("summary", ""),
+                    entities=lib_res.get("entities", []),
+                    topics=lib_res.get("topics", []),
+                    suggested_folder=lib_res.get("suggested_folder", ""),
+                    confidence=lib_res.get("confidence", 0.8),
+                )
+                proposal = organizer_agent.propose(file_path=file_path, understanding=understanding)
+                result.update({
+                    "proposed_filename": proposal.proposed_filename,
+                    "proposed_destination": proposal.proposed_destination,
+                    "organization_reasoning": proposal.reasoning,
+                    "organization_confidence": proposal.confidence,
+                    "organization_needed": proposal.organization_needed,
+                    "requires_folder_creation": proposal.requires_folder_creation,
+                    "signals_used": proposal.signals_used,
+                })
         return result
 
     # 3. Conditional Router
