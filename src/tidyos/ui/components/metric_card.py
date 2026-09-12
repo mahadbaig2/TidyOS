@@ -58,3 +58,8 @@ class MetricCard(QFrame):
 
     def set_value(self, value: str):
         self.value_label.setText(value)
+
+    def set_hint(self, hint: str):
+        if hasattr(self, "hint_label"):
+            self.hint_label.setText(hint)
+
