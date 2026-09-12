@@ -20,6 +20,11 @@ from tidyos.storage import StorageRepository, ManagedRoot
 from tidyos.workers.scanner_worker import ScannerWorker
 from tidyos.workers.librarian_worker import LibrarianWorker
 from tidyos.workers.indexer_worker import IndexerWorker
+from tidyos.workers.watcher_worker import WatcherServiceManager
+from tidyos.safety.protection_manager import ProtectionManager
+from tidyos.safety.policy import SafetyPolicy
+from tidyos.services.mutation_service import MutationService
+from tidyos.services.pipeline import PipelineOrchestrator
 from tidyos.ui.theme.tokens import COLORS
 from tidyos.ui.components.sidebar import Sidebar
 from tidyos.ui.pages import (
@@ -88,16 +93,35 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.setObjectName("MainContentArea")
 
+        # Initialize Safety, Mutation & Pipeline Services
+        self.protection_manager = ProtectionManager(self.repository)
+        self.safety_policy = SafetyPolicy(
+            protection_manager=self.protection_manager,
+            managed_roots_provider=lambda: [r.path for r in self.repository.list_managed_roots(enabled_only=True)],
+        )
+        self.mutation_service = MutationService(
+            repository=self.repository,
+            safety_policy=self.safety_policy,
+        )
+        self.pipeline = PipelineOrchestrator(
+            repository=self.repository,
+            safety_policy=self.safety_policy,
+            mutation_service=self.mutation_service,
+        )
+
         self.home_page = HomePage(repository=self.repository)
         self.search_page = SearchPage(repository=self.repository)
+        self.organize_page = OrganizePage(repository=self.repository, mutation_service=self.mutation_service)
+        self.review_page = ReviewPage(repository=self.repository, mutation_service=self.mutation_service)
+        self.activity_page = ActivityPage(repository=self.repository, mutation_service=self.mutation_service)
         self.settings_page = SettingsPage(repository=self.repository)
 
         self.pages: dict[str, QWidget] = {
             "home": self.home_page,
             "search": self.search_page,
-            "organize": OrganizePage(),
-            "review": ReviewPage(),
-            "activity": ActivityPage(),
+            "organize": self.organize_page,
+            "review": self.review_page,
+            "activity": self.activity_page,
             "settings": self.settings_page,
         }
 
@@ -108,6 +132,16 @@ class MainWindow(QMainWindow):
 
         # Connect navigation
         self.sidebar.page_changed.connect(self.navigate_to)
+        self.organize_page.navigate_requested.connect(self.navigate_to)
+
+        # Connect cross-page synchronization
+        self.review_page.proposal_applied.connect(self.activity_page.refresh_ledger)
+        self.review_page.proposal_applied.connect(self.organize_page.refresh_page)
+        self.review_page.proposal_applied.connect(self.home_page.refresh_metrics)
+
+        self.activity_page.action_undone.connect(self.review_page.refresh_queue)
+        self.activity_page.action_undone.connect(self.organize_page.refresh_page)
+        self.activity_page.action_undone.connect(self.home_page.refresh_metrics)
 
         # Connect scan triggers and root change updates
         self.settings_page.scan_requested.connect(self.start_scan)
@@ -120,7 +154,46 @@ class MainWindow(QMainWindow):
         # Initialize System Tray
         self._setup_system_tray()
 
-        logger.info("MainWindow initialized with real SQLite storage repository and background scanner.")
+        # Initialize Live Filesystem Watcher
+        self.watcher_manager = WatcherServiceManager(
+            repository=self.repository,
+            pipeline=self.pipeline,
+            parent=self,
+        )
+        self.watcher_manager.signals.review_needed.connect(self._on_watch_review_needed)
+        self.watcher_manager.signals.file_organized.connect(self._on_watch_file_organized)
+
+        if config.watcher_enabled:
+            self.watcher_manager.start_watching()
+
+        logger.info("MainWindow initialized with real SQLite storage repository, mutation service, and watcher.")
+
+    def _on_watch_review_needed(self, filename: str, dest: str):
+        """Notification when watcher routes an arrived file to the review queue."""
+        logger.info("Watch Mode review required for '%s' -> '%s'", filename, dest)
+        self.review_page.refresh_queue()
+        self.organize_page.refresh_page()
+        if self.tray_icon and self.tray_icon.isVisible():
+            self.tray_icon.showMessage(
+                "TidyOS Review Needed",
+                f"New file ready for review: {filename}",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000,
+            )
+
+    def _on_watch_file_organized(self, old_path: str, new_path: str):
+        """Notification when watcher autonomously organizes an arrived file."""
+        logger.info("Watch Mode organized file: %s -> %s", old_path, new_path)
+        self.activity_page.refresh_ledger()
+        self.organize_page.refresh_page()
+        self.home_page.refresh_metrics()
+        if self.tray_icon and self.tray_icon.isVisible():
+            self.tray_icon.showMessage(
+                "TidyOS File Organized",
+                f"Organized: {Path(new_path).name}",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000,
+            )
 
     def navigate_to(self, page_id: str):
         """Switch current view to the specified page."""
@@ -245,3 +318,9 @@ class MainWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def closeEvent(self, event):
+        """Cleanly stop watcher on window close."""
+        if hasattr(self, "watcher_manager"):
+            self.watcher_manager.stop_watching()
+        event.accept()
