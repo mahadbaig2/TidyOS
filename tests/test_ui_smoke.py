@@ -29,7 +29,7 @@ def test_all_pages_present(qapp):
     expected_pages = ["home", "search", "organize", "review", "activity", "settings"]
 
     assert set(window.pages.keys()) == set(expected_pages)
-    assert window.stack.count() == 6
+    assert window.stack.count() == 7  # 6 core pages + 1 onboarding wizard
 
     assert isinstance(window.pages["home"], HomePage)
     assert isinstance(window.pages["search"], SearchPage)

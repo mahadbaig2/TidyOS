@@ -46,6 +46,7 @@ class SearchResultCard(QFrame):
         summary: str,
         matched_terms: str,
         protected: bool = False,
+        title: str = "",
         parent=None,
     ):
         super().__init__(parent)
@@ -88,6 +89,12 @@ class SearchResultCard(QFrame):
         score_badge = StatusBadge(match_score, variant="success")
         top_layout.addWidget(score_badge)
         layout.addLayout(top_layout)
+
+        # Semantic title if different from filename
+        if title and title.strip().lower() != filename.strip().lower():
+            title_lbl = QLabel(f"✨ {title}")
+            title_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #818cf8;")
+            layout.addWidget(title_lbl)
 
         # Folder path
         path_lbl = QLabel(f"📂 {folder_path}")
@@ -398,6 +405,7 @@ class SearchPage(QWidget):
                     summary=r.summary,
                     matched_terms=reasons_str,
                     protected=r.protected,
+                    title=r.title,
                 )
                 self.results_layout.addWidget(card)
 
