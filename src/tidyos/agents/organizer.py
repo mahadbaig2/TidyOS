@@ -177,6 +177,7 @@ class OrganizerAgent:
             suggested_folder=suggested_folder,
             candidate_roots=candidate_roots,
             signals=signals,
+            topics=topics,
         )
 
         # 5. Check if organization is actually needed
@@ -329,85 +330,173 @@ class OrganizerAgent:
         suggested_folder: str,
         candidate_roots: Optional[List[str]],
         signals: List[str],
+        topics: Optional[List[str]] = None,
     ) -> Tuple[str, bool, str]:
-        """Resolve destination directory preferring existing folder hierarchies."""
-        # 1. Existing Organization First: Search for exact or subfolder matches in existing folders
+        """Resolve destination directory preferring existing folder hierarchies.
+
+        Priority:
+          1. Existing folder that matches entity (strongest signal)
+          2. Existing folder that matches topic keywords
+          3. Existing folder that matches document type category
+          4. Librarian suggested_folder path under the best managed root
+          5. Default doc-type category under best managed root
+        """
         best_match = None
         best_score = 0
         match_reason = "Matched existing folder structure"
 
-        # Look for entity-specific subfolder (e.g. "Vercel" inside an Invoices folder)
-        normalized_entities = [e.lower().replace(" ", "") for e in entities]
+        normalized_entities = [e.lower().replace(" ", "") for e in (entities or [])]
+        normalized_topics = [t.lower() for t in (topics or [])]
         norm_type = doc_type.lower()
 
         for folder_str in existing_folders:
             f_norm = folder_str.lower().replace("\\", "/")
             score = 0
 
-            # Match entity in folder name
+            # Entity match (strongest — e.g. "Vercel" folder for a Vercel invoice)
             for ent in normalized_entities:
-                if ent and ent in f_norm:
+                if ent and len(ent) > 3 and ent in f_norm:
                     score += 50
                     signals.append(f"entity_match:{ent}")
 
-            # Match document type in folder name (e.g. "invoices", "finance", "receipts", "contracts")
-            if norm_type in f_norm:
+            # Topic keyword match — e.g. "networking", "machine learning", "finance"
+            for topic in normalized_topics:
+                topic_slug = topic.replace(" ", "").lower()
+                topic_words = topic.lower().split()
+                # Check full phrase or individual words
+                if topic_slug in f_norm.replace("/", "").replace("_", "").replace(" ", ""):
+                    score += 35
+                    signals.append(f"topic_match:{topic}")
+                else:
+                    for word in topic_words:
+                        if len(word) > 4 and word in f_norm:
+                            score += 15
+
+            # Document type match
+            if norm_type and norm_type in f_norm:
                 score += 30
             elif norm_type == "invoice" and ("finance" in f_norm or "billing" in f_norm):
                 score += 25
-            elif norm_type == "resume" and ("careers" in f_norm or "jobs" in f_norm or "hr" in f_norm):
+            elif norm_type == "resume" and ("career" in f_norm or "jobs" in f_norm or "hr" in f_norm):
                 score += 25
-            elif norm_type == "screenshot" and ("pictures" in f_norm or "screenshots" in f_norm or "images" in f_norm):
+            elif norm_type == "screenshot" and ("picture" in f_norm or "screenshot" in f_norm or "image" in f_norm):
                 score += 25
+            elif norm_type in ("textbook", "documentation", "academic_paper", "research") and (
+                "book" in f_norm or "doc" in f_norm or "education" in f_norm or "study" in f_norm
+            ):
+                score += 20
 
             if score > best_score:
                 best_score = score
                 best_match = folder_str
 
-        # If a strong existing folder match was found (>= 50), use it directly
+        # Strong entity match
         if best_match and best_score >= 50:
             signals.append("existing_folder_exact_match")
             return best_match, False, f"Matched existing folder: {Path(best_match).name}"
 
-        # 2. If moderate match found (>= 25)
+        # Good topic / type match
         if best_match and best_score >= 25:
-            signals.append("existing_folder_type_match")
+            signals.append("existing_folder_topic_match")
             return best_match, False, f"Matched existing category folder: {Path(best_match).name}"
 
-        # 3. Anchor to an existing root or user Documents folder
-        anchor_root = candidate_roots[0] if candidate_roots else str(path_obj.parent)
-        parent_dir = path_obj.parent
-        if "downloads" in str(parent_dir).lower():
-            # If current file is in Downloads, anchor to user Documents if available
-            sibling_docs = parent_dir.parent / "Documents"
-            if sibling_docs.exists() and sibling_docs.is_dir():
-                anchor_root = str(sibling_docs)
+        # -----------------------------------------------------------------------
+        # No strong existing folder match — build a structured path
+        # -----------------------------------------------------------------------
 
-        # 4. Fallback to Librarian's suggested_folder
+        # Find the best managed root to anchor under (prefer one that already
+        # contains organised content matching this doc type).
+        anchor_root = self._pick_anchor_root(
+            path_obj=path_obj,
+            candidate_roots=candidate_roots,
+            existing_folders=existing_folders,
+            doc_type=doc_type,
+        )
+
+        # 4. Use Librarian's suggested_folder (the richest signal — includes topic hierarchy)
         if suggested_folder:
             clean_rel = suggested_folder.replace("\\", "/").strip("/")
-            target_dest = Path(anchor_root) / clean_rel
+            # Remove the first component if it duplicates the anchor root basename
+            # e.g. anchor=.../Documents, suggested=Documents/Computer Science/Networking
+            # → target = .../Documents/Computer Science/Networking  ✓
+            anchor_name = Path(anchor_root).name.lower()
+            parts = clean_rel.split("/")
+            if parts and parts[0].lower() == anchor_name:
+                clean_rel = "/".join(parts[1:])  # strip duplicate prefix
+
+            if clean_rel:
+                target_dest = Path(anchor_root) / clean_rel
+            else:
+                target_dest = Path(anchor_root)
+
             requires_creation = not target_dest.exists()
             signals.append("suggested_folder_used")
-            return str(target_dest), requires_creation, f"Suggested category path '{clean_rel}'"
+            return str(target_dest), requires_creation, f"Topic path '{clean_rel}'"
 
         # 5. Default categorization based on doc_type
         type_defaults = {
             "invoice": "Finance/Invoices",
             "receipt": "Finance/Receipts",
             "contract": "Legal/Contracts",
-            "resume": "Documents/Resumes",
+            "resume": "Career/Resumes",
             "report": "Documents/Reports",
             "screenshot": "Pictures/Screenshots",
             "photo": "Pictures",
             "source_code": "Projects",
             "documentation": "Documents/Documentation",
+            "textbook": "Books/Textbooks",
+            "academic_paper": "Documents/Research",
+            "research": "Documents/Research",
         }
-        rel_cat = type_defaults.get(doc_type, "Organized")
+        rel_cat = type_defaults.get(doc_type, "Documents/Misc")
         target_dest = Path(anchor_root) / rel_cat
         requires_creation = not target_dest.exists()
         signals.append("default_type_path_used")
         return str(target_dest), requires_creation, f"Organized into category '{rel_cat}'"
+
+    def _pick_anchor_root(
+        self,
+        path_obj: Path,
+        candidate_roots: Optional[List[str]],
+        existing_folders: List[str],
+        doc_type: str,
+    ) -> str:
+        """Choose the best managed root to place this file under.
+
+        Prefers:
+          - A managed root that is NOT the file's current parent (avoid staying in Downloads)
+          - A root whose name suggests Documents / organised storage
+          - Falls back to the first available candidate root
+        """
+        if not candidate_roots:
+            return str(path_obj.parent)
+
+        current_parent = str(path_obj.parent).lower()
+
+        # Prefer roots that look like organised storage (not intake folders)
+        doc_hints = {"documents", "docs", "files", "storage", "organised", "organized", "personal"}
+        intake_hints = {"downloads", "desktop", "temp", "tmp", "inbox"}
+
+        scored: List[Tuple[int, str]] = []
+        for root in candidate_roots:
+            root_lower = root.lower().replace("\\", "/")
+            score = 0
+            basename = Path(root).name.lower()
+
+            if root_lower == current_parent:
+                score -= 20  # penalise staying in the same folder
+            if basename in intake_hints:
+                score -= 10
+            if basename in doc_hints:
+                score += 20
+            if doc_type in ("screenshot", "photo") and "picture" in root_lower:
+                score += 15
+
+            scored.append((score, root))
+
+        # Return the highest-scoring root
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return scored[0][1]
 
     def _calculate_confidence(
         self,

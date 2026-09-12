@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from pathlib import Path
+from typing import Optional, List
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -76,6 +77,7 @@ class MainWindow(QMainWindow):
         self.active_worker: Optional[ScannerWorker] = None
         self.active_librarian_worker: Optional[LibrarianWorker] = None
         self.active_indexer_worker: Optional[IndexerWorker] = None
+        self._indexing_in_progress: bool = False  # Guard against concurrent index runs
 
         # Root container
         root_widget = QWidget()
@@ -147,6 +149,8 @@ class MainWindow(QMainWindow):
         # Connect scan triggers and root change updates
         self.settings_page.scan_requested.connect(self.start_scan)
         self.settings_page.roots_changed.connect(self.home_page.refresh_metrics)
+        # When a new root is added, immediately scan + understand + index it
+        self.settings_page.roots_changed.connect(self._on_roots_changed)
 
         # Global Shortcut: Ctrl+K / Cmd+K to jump to search
         self.search_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
@@ -163,6 +167,8 @@ class MainWindow(QMainWindow):
         )
         self.watcher_manager.signals.review_needed.connect(self._on_watch_review_needed)
         self.watcher_manager.signals.file_organized.connect(self._on_watch_file_organized)
+        # Auto-index search whenever the watcher finishes processing any file
+        self.watcher_manager.signals.file_processed.connect(self._on_watch_file_processed)
 
         if config.watcher_enabled:
             self.watcher_manager.start_watching()
@@ -187,6 +193,13 @@ class MainWindow(QMainWindow):
             self.navigate_to("search")  # Search is the main screen
 
         logger.info("MainWindow initialized with real SQLite storage repository, mutation service, and watcher.")
+
+        # Auto-process on startup: pick up any files added while the app was closed
+        if self.repository.is_first_run_completed():
+            roots = self.repository.list_managed_roots(enabled_only=True)
+            if roots:
+                logger.info("Auto-scanning %d managed root(s) on startup...", len(roots))
+                self.start_scan()
 
     def _on_onboarding_completed(self):
         """User completed first-run onboarding — land on Search as main screen."""
@@ -232,6 +245,32 @@ class MainWindow(QMainWindow):
                 QSystemTrayIcon.MessageIcon.Information,
                 3000,
             )
+
+    def _on_watch_file_processed(self, file_path: str, status: str, message: str):
+        """Called after the watcher pipeline processes any arriving file.
+
+        Automatically re-indexes the search vector/FTS store so newly arrived
+        (and semantically analysed) files are immediately findable without any
+        manual button press.
+        """
+        logger.debug("Watch: file processed '%s' status=%s — scheduling search index update", file_path, status)
+        # Only index if the file was actually analysed (not an error or suppressed)
+        if status not in ("ERROR",):
+            self.start_indexing()
+
+    def _on_roots_changed(self):
+        """Called when the user adds or removes a managed root in Settings.
+
+        Immediately kicks off scan → understand → index so the new folder
+        appears in search without any manual step. Also restarts the watcher
+        so the new root is picked up by Watch Mode.
+        """
+        logger.info("Managed roots changed — auto-scanning new roots and restarting watcher.")
+        self.start_scan()
+        # Restart watcher to pick up any newly added roots
+        if config.watcher_enabled:
+            self.watcher_manager.stop_watching()
+            self.watcher_manager.start_watching()
 
     def navigate_to(self, page_id: str):
         """Switch current view to the specified page."""
@@ -295,16 +334,24 @@ class MainWindow(QMainWindow):
             self.start_indexing()
 
     def start_indexing(self):
-        """Start non-blocking vector and FTS indexing across understood files."""
+        """Start non-blocking vector and FTS indexing across understood files.
+
+        Guarded: if indexing is already running the call is a no-op — the
+        in-flight worker will pick up any files queued in the meantime.
+        """
+        if self._indexing_in_progress:
+            logger.debug("Indexing already in progress — skipping duplicate trigger.")
+            return
+        self._indexing_in_progress = True
         logger.info("Initiating background vector and FTS indexing...")
         worker = IndexerWorker(self.repository)
         self.active_indexer_worker = worker
-
         worker.signals.indexing_completed.connect(self._on_indexing_completed)
         self.thread_pool.start(worker)
 
     def _on_indexing_completed(self, total_indexed: int, duration_s: float):
         """Handle completion of background indexing."""
+        self._indexing_in_progress = False
         logger.info(f"Indexing completed: {total_indexed} files in {duration_s:.2f}s")
         self.settings_page.show_status_message(
             f"Search index updated: {total_indexed} files indexed in {duration_s:.1f}s."

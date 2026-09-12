@@ -112,7 +112,7 @@ flowchart TD
 - Windows 10 or Windows 11 (64-bit)
 - Python 3.12 (64-bit)
 
-### Setup & Launch
+### Setup & Installation
 
 1. **Clone the repository**:
    ```powershell
@@ -120,75 +120,115 @@ flowchart TD
    cd TidyOS
    ```
 
-2. **Set up virtual environment**:
+2. **Set up virtual environment & install dependencies**:
    ```powershell
    py -3.12 -m venv .venv
    .\.venv\Scripts\Activate.ps1
-   pip install -r requirements.txt
+   pip install -e ".[full,dev]"
    ```
 
-3. **Run tests**:
-   ```powershell
-   pytest
+3. **Configure Environment (Optional)**:
+   TidyOS works 100% offline with deterministic heuristics, local Windows OCR, and local embeddings. To optionally enable frontier LLM reasoning via OpenAI or OpenRouter:
+   Create a `.env` file in the root directory:
+   ```env
+   # Option A: Direct OpenAI
+   OPENAI_API_KEY=sk-...
+   AI_MODEL=gpt-4o-mini
+
+   # Option B: OpenRouter
+   OPENAI_API_KEY=sk-or-v1-...
+   OPENAI_BASE_URL=https://openrouter.ai/api/v1
+   AI_MODEL=openai/gpt-4o-mini
    ```
 
-4. **Launch TidyOS**:
+4. **Verify installation**:
    ```powershell
-   python -m tidyos.main
+   pytest tests/test_mutation_and_watch.py tests/test_organizer_naming.py tests/test_ui_smoke.py -q
    ```
 
 ---
 
-## 2-Minute Hero Demo Walkthrough
+## How to Run: Two Modes
 
-To experience the complete end-to-end demo:
+### Mode 1: Real-World Launch (Your Actual Files)
+
+Organize your everyday `Downloads`, `Desktop`, `Screenshots`, or custom project folders:
+
+1. **Launch TidyOS**:
+   ```powershell
+   tidyos
+   # or: python -m tidyos.main
+   ```
+
+2. **Configure Your Managed Folders**:
+   - Navigate to **Settings** (⚙️ gear icon in sidebar).
+   - In **Managed Directories**, add the folders you want TidyOS to watch (e.g., `C:\Users\<You>\Downloads`, `C:\Users\<You>\Desktop`, `C:\Users\<You>\Pictures\Screenshots`).
+   - TidyOS automatically starts a background scan, understands your files with the Librarian agent, and indexes them into the vector/FTS search engine.
+
+3. **Background Continuous Watch Mode**:
+   - When **Watch Mode** is enabled (default), drop any file into your watched folders.
+   - **Zero manual intervention required**:
+     - The debounced filesystem watcher picks up the file.
+     - Content is extracted and analyzed (PDF text, Word documents, images via OCR).
+     - Semantic topic hierarchies are identified (e.g., Networking materials are placed into `Documents/Computer Science/Networking/`, financial statements into `Documents/Finance/`, etc.).
+     - The file is organized and **automatically indexed for search** immediately.
+
+4. **Organize Workflow (Review vs Auto Mode)**:
+   - **Review Mode (Default)**: TidyOS proposes changes and surfaces them in **Organize** (`Fix My Mess`), allowing 1-click inspection, batch approval, or rejection.
+   - **Auto Mode**: Enabled via Settings for instant autonomous reorganization with guaranteed safety guardrails.
+   - **Instant Undo**: Any move can be rolled back at any time from the **Activity** tab with a single click.
+
+---
+
+### Mode 2: 2-Minute Hero Demo Sandbox
+
+Experience the complete end-to-end benchmark in an isolated sandbox without touching your personal files:
 
 1. **Reset Demo Environment**:
    ```powershell
    python scripts/reset_demo.py
    ```
-   This creates an isolated, repeatable sandbox in `TidyOS_Demo/` containing four benchmark files and a protected Next.js project.
+   This generates a self-contained `TidyOS_Demo/` folder containing benchmark test files (messy invoices, research PDFs, screenshots, resumes) and a protected Next.js codebase.
 
 2. **Launch TidyOS**:
    ```powershell
-   python -m tidyos.main
+   tidyos
    ```
 
 3. **First-Run Onboarding**:
-   - The **Welcome Screen** greets you. Click **Get Started**.
-   - Select approved folders (`Downloads`, `Documents`, `Projects`) and click **Analyze My Files**.
-   - Watch real, stage-based background progress without any UI freezing.
-   - The **Workspace Summary** highlights:
-     - Real indexed metrics
-     - **PROTECTED ENVIRONMENT: storefront (Next.js project)**
+   - Click **Get Started** on the Welcome Screen.
+   - Select the `TidyOS_Demo` folders (`Downloads`, `Documents`, `Projects`) and click **Analyze My Files**.
+   - Watch the multi-stage background progress without any UI blocking.
+   - The **Workspace Summary** highlights indexed assets and the detected **PROTECTED ENVIRONMENT: storefront (Next.js)**.
    - Click **Review Cleanup Plan** to enter **Fix My Mess**.
 
 4. **Fix My Mess (Controlled Agency)**:
-   - Notice proposal: `document (17).pdf` $\rightarrow$ `Vercel_Invoice_September_2026.pdf` targeting `Documents/Finance/Invoices/Vercel`.
+   - Inspect the proposal: `document (17).pdf` $\rightarrow$ `Vercel_Invoice_September_2026.pdf` targeting `Documents/Finance/Invoices/Vercel`.
    - Click **Approve Move**. TidyOS physically moves and renames the file on disk.
    - Click **Open TidyOS**.
 
-5. **Search by Meaning**:
-   - In Search, enter: `"Find the Vercel invoice from September."`
-     $\rightarrow$ Returns the file at its **new destination**.
-   - In Search, enter: `"Find the PDF about the agent hackathon I'm attending today."`
+5. **Search by Meaning (Hybrid Retrieval)**:
+   - Search: `"Find the Vercel invoice from September."`
+     $\rightarrow$ Found at its **new destination**.
+   - Search: `"Find the PDF about the agent hackathon I'm attending today."`
      $\rightarrow$ Returns `document_42.pdf` as **Rank #1**.
-   - In Search, enter: `"Find the screenshot where FastAPI had the CORS error."`
+   - Search: `"Find the screenshot where FastAPI had the CORS error."`
      $\rightarrow$ Returns `Screenshot_20260912.png` as **Rank #1**.
-   - In Search, enter: `"Find my latest AI Product Engineering resume."`
+   - Search: `"Find my latest AI Product Engineering resume."`
      $\rightarrow$ Returns `resume_final_3.pdf` as **Rank #1**.
 
 6. **Environmental Contrast**:
    - Search: `"storefront invoice"`
      $\rightarrow$ Returns `storefront/public/invoice.pdf` flagged as `🛡️ Protected Project`.
-   - Attempting to reorganize this file is blocked by `SafetyPolicy`.
+   - Reorganizing this file is safely prohibited by `SafetyPolicy`.
 
 7. **Instant Undo**:
    - Go to **Activity**. Click **[ Undo ]** on the Vercel invoice move.
-   - The file is immediately restored to `Downloads/document (17).pdf`.
-   - Searching again immediately reflects the restored original path.
+   - The file is instantly restored to `Downloads/document (17).pdf`.
+   - Search immediately updates to reflect the restored path.
 
 ---
+
 
 ## Hackathon Disclosure
 

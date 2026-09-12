@@ -173,6 +173,12 @@ class MutationService:
 
         # 9. Search and Database Index Synchronization
         try:
+            # If a stale record already exists at the destination (from a prior run),
+            # remove it first to avoid UNIQUE constraint violations.
+            try:
+                self.repository.delete_file_record(str(dest_full))
+            except Exception:
+                pass  # No stale record — that's fine
             self.repository.relocate_file_record(
                 old_path=str(source_path),
                 new_path=str(dest_full),

@@ -397,7 +397,7 @@ class OpenAIClient:
 
         # Classify document type and suggested folder
         doc_type = "document"
-        suggested_folder = "Documents"
+        suggested_folder = ""   # will be resolved from topics if not set explicitly
         topics: List[str] = []
         entities: List[str] = []
 
@@ -426,6 +426,21 @@ class OpenAIClient:
             suggested_folder = "Documents/Notes"
             topics.extend(["notes"])
 
+        # -----------------------------------------------------------------------
+        # Topic extraction from filename — runs when AI is unavailable.
+        # This is the key fallback for descriptive filenames like
+        # "Network_Programming_Comprehensive_Answers.pdf".
+        # -----------------------------------------------------------------------
+        if not topics:
+            topics = self._extract_filename_topics(stem, combined_text)
+
+        # Derive suggested_folder from topics when not already set by keyword rules
+        if not suggested_folder and topics:
+            suggested_folder = self._suggest_folder_from_topics(topics, ext)
+
+        if not suggested_folder:
+            suggested_folder = "Documents/Misc"
+
         # Extract entities from metadata or uppercase patterns
         if metadata.get("author"):
             entities.append(str(metadata["author"]))
@@ -438,7 +453,6 @@ class OpenAIClient:
         # Summary generation
         summary = ""
         if text.strip():
-            # First 1-2 lines or sentences
             lines = [l.strip() for l in text.split("\n") if l.strip()]
             summary_candidate = " ".join(lines[:2])
             if len(summary_candidate) > 200:
@@ -457,6 +471,64 @@ class OpenAIClient:
             "confidence": 0.70,
             "analysis_source": "local_heuristic",
         }
+
+    # -----------------------------------------------------------------------
+    # Filename-based topic extraction helpers
+    # -----------------------------------------------------------------------
+
+    # Map keyword → (topic_label, folder_path)
+    _TOPIC_MAP: List[tuple] = [
+        # Computer Science / Technology
+        (["network", "networking", "tcp", "udp", "socket", "ip", "protocol", "http", "dns", "osi"], "Network Programming", "Computer Science/Networking"),
+        (["machine learning", "ml ", "neural", "deep learning", "cnn", "rnn", "lstm", "transformer", "nlp", "ai ", "artificial intelligence"], "Machine Learning", "Computer Science/AI & ML"),
+        (["algorithm", "data structure", "sorting", "graph", "tree", "complexity", "dynamic programming"], "Algorithms", "Computer Science/Algorithms"),
+        (["operating system", "os ", "kernel", "process", "thread", "memory management", "scheduling", "deadlock"], "Operating Systems", "Computer Science/Operating Systems"),
+        (["database", "sql", "nosql", "mongodb", "postgres", "mysql", "relational", "schema", "query"], "Databases", "Computer Science/Databases"),
+        (["security", "cryptography", "encryption", "cybersecurity", "vulnerability", "firewall", "ssl", "tls"], "Cybersecurity", "Computer Science/Security"),
+        (["web development", "frontend", "backend", "api", "rest", "graphql", "microservice"], "Web Development", "Development/Web"),
+        (["cloud", "aws", "azure", "gcp", "kubernetes", "docker", "devops", "ci/cd"], "Cloud & DevOps", "Development/Cloud"),
+        (["software engineering", "design pattern", "architecture", "agile", "scrum", "solid", "oop"], "Software Engineering", "Computer Science/Software Engineering"),
+        (["computer vision", "image processing", "opencv", "yolo", "segmentation", "detection"], "Computer Vision", "Computer Science/Computer Vision"),
+        # Academic
+        (["exam", "quiz", "test", "midterm", "final exam", "assignment", "homework", "lab report"], "Academics", "Education/Exams & Assignments"),
+        (["lecture", "slides", "course", "tutorial", "study guide", "notes"], "Study Notes", "Education/Notes"),
+        (["research", "paper", "thesis", "dissertation", "abstract", "methodology", "literature review"], "Research", "Documents/Research"),
+        # Finance
+        (["finance", "accounting", "tax", "financial", "budget", "expense", "profit", "loss"], "Finance", "Finance"),
+        # Legal
+        (["contract", "agreement", "legal", "law", "court", "clause", "party"], "Legal", "Legal"),
+        # Health
+        (["medical", "health", "prescription", "diagnosis", "hospital", "patient", "clinical"], "Medical", "Health"),
+    ]
+
+    def _extract_filename_topics(self, stem: str, combined_text: str) -> List[str]:
+        """Extract semantic topic labels from a filename stem and surrounding text."""
+        lower = (stem.lower().replace("_", " ").replace("-", " ") + " " + combined_text[:500])
+        for keywords, topic_label, _ in self._TOPIC_MAP:
+            for kw in keywords:
+                if kw in lower:
+                    return [topic_label]
+        # Fallback: clean up the stem into a topic phrase
+        clean = re.sub(r"[_\-]+", " ", stem).strip()
+        # Remove generic suffixes
+        clean = re.sub(r"\b(comprehensive|answers?|notes?|final|v\d+|\d+)\b", "", clean, flags=re.IGNORECASE).strip()
+        if len(clean) > 4:
+            return [clean.title()]
+        return []
+
+    def _suggest_folder_from_topics(self, topics: List[str], ext: str) -> str:
+        """Map extracted topic labels to a folder path."""
+        if not topics:
+            return "Documents/Misc"
+        topic_lower = topics[0].lower()
+        for keywords, topic_label, folder in self._TOPIC_MAP:
+            if topic_label.lower() == topic_lower:
+                return folder
+        # Generic: put under Documents/<Topic>
+        safe = re.sub(r"[^a-zA-Z0-9 /]", "", topics[0]).strip().title()
+        return f"Documents/{safe}" if safe else "Documents/Misc"
+
+
 
     def _heuristic_image_analysis(
         self,

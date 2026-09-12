@@ -118,10 +118,15 @@ class PipelineOrchestrator:
             )
 
         # 3. Destination & Filename Advisory Proposal (Organizer)
+        # Always supply managed roots as candidate anchors so the organizer can
+        # pick the best destination even when called from Watch Mode (no explicit roots).
+        effective_roots = candidate_roots or [
+            r.path for r in self.repository.list_managed_roots(enabled_only=True)
+        ]
         proposal: OrganizationProposal = self.organizer.propose(
             file_path=str(p),
             understanding=understanding,
-            candidate_roots=candidate_roots,
+            candidate_roots=effective_roots,
         )
 
         if not proposal.organization_needed:
