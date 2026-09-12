@@ -69,7 +69,7 @@ class WatcherServiceManager(QObject):
 
         # Run pipeline
         try:
-            res: PipelineResult = self.pipeline.process_file(file_path, auto_mode=False)
+            res: PipelineResult = self.pipeline.process_file(file_path, auto_mode=True)
             self.signals.file_processed.emit(file_path, res.status, res.message)
 
             if res.status == "QUEUED_FOR_REVIEW" and res.proposal:

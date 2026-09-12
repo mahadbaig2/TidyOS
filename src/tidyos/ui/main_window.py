@@ -112,7 +112,7 @@ class MainWindow(QMainWindow):
 
         self.home_page = HomePage(repository=self.repository)
         self.search_page = SearchPage(repository=self.repository)
-        self.organize_page = OrganizePage(repository=self.repository, mutation_service=self.mutation_service)
+        self.organize_page = OrganizePage(repository=self.repository, mutation_service=self.mutation_service, pipeline=self.pipeline)
         self.review_page = ReviewPage(repository=self.repository, mutation_service=self.mutation_service)
         self.activity_page = ActivityPage(repository=self.repository, mutation_service=self.mutation_service)
         self.settings_page = SettingsPage(repository=self.repository)
@@ -184,14 +184,14 @@ class MainWindow(QMainWindow):
             self.stack.setCurrentWidget(self.onboarding_wizard)
         else:
             self.sidebar.show()
-            self.navigate_to("home")
+            self.navigate_to("search")  # Search is the main screen
 
         logger.info("MainWindow initialized with real SQLite storage repository, mutation service, and watcher.")
 
     def _on_onboarding_completed(self):
-        """User completed first-run onboarding."""
+        """User completed first-run onboarding — land on Search as main screen."""
         self.sidebar.show()
-        self.navigate_to("home")
+        self.navigate_to("search")  # Search is the main experience
         self.home_page.refresh_metrics()
         self.review_page.refresh_queue()
         self.organize_page.refresh_page()

@@ -156,14 +156,10 @@ class PipelineOrchestrator:
             )
 
         # 5. Check if eligible for immediate AUTO-Move
-        can_auto_move = (
-            auto_mode
-            and pre_decision.status == PolicyStatus.ALLOW
-            and proposal.confidence >= 0.85
-            and not proposal.requires_folder_creation
-            and Path(proposal.proposed_destination).exists()
-            and not target_full.exists()
-        )
+        # When auto_mode=True (user clicked "Organize All" or Watch Mode), we trust the
+        # SafetyPolicy decision and apply immediately. Confidence threshold only applies
+        # to passive background suggestions.
+        can_auto_move = auto_mode and pre_decision.status == PolicyStatus.ALLOW
 
         if can_auto_move:
             success, msg, action_id = self.mutation_service.apply_proposal(proposal, force_auto=True)

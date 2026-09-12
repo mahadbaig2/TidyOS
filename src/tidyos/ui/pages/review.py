@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QMessageBox,
+    QLineEdit,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -33,7 +34,7 @@ class ReviewProposalCard(QFrame):
     def __init__(
         self,
         item: ReviewQueueItem,
-        on_approve: Callable[[ReviewQueueItem], None],
+        on_approve: Callable[[ReviewQueueItem, str], None],
         on_reject: Callable[[ReviewQueueItem], None],
         parent=None,
     ):
@@ -106,6 +107,31 @@ class ReviewProposalCard(QFrame):
 
         layout.addWidget(path_box)
 
+        # Editable destination field
+        edit_row = QHBoxLayout()
+        edit_row.setSpacing(8)
+        edit_lbl = QLabel("Move to:")
+        edit_lbl.setStyleSheet(f"font-size: 12px; color: {COLORS.text_muted}; min-width: 56px;")
+        edit_row.addWidget(edit_lbl)
+        self.dest_edit = QLineEdit()
+        self.dest_edit.setText(target_full)
+        self.dest_edit.setStyleSheet(
+            f"""
+            QLineEdit {{
+                background-color: {COLORS.surface_raised};
+                color: {COLORS.text_primary};
+                border: 1px solid {COLORS.border_subtle};
+                border-radius: {RADII.sm}px;
+                padding: 5px 10px;
+                font-family: {TYPOGRAPHY.mono_family};
+                font-size: 12px;
+            }}
+            QLineEdit:focus {{ border-color: {COLORS.border_focus}; }}
+            """
+        )
+        edit_row.addWidget(self.dest_edit, 1)
+        layout.addLayout(edit_row)
+
         # Rationale
         if item.reason:
             reason_lbl = QLabel(f'Rationale: "{item.reason}"')
@@ -158,7 +184,7 @@ class ReviewProposalCard(QFrame):
             }}
             """
         )
-        approve_btn.clicked.connect(lambda: self.on_approve(self.item))
+        approve_btn.clicked.connect(lambda: self.on_approve(self.item, self.dest_edit.text().strip()))
         btn_layout.addWidget(approve_btn)
 
         layout.addLayout(btn_layout)
@@ -276,17 +302,26 @@ class ReviewPage(QWidget):
             )
             self.cards_box.addWidget(card)
 
-    def _on_approve_item(self, item: ReviewQueueItem):
+    def _on_approve_item(self, item: ReviewQueueItem, edited_dest: str = ""):
         """Execute approved proposal through central MutationService."""
         if not self.mutation_service:
             QMessageBox.warning(self, "Service Unavailable", "MutationService is not connected.")
             return
 
+        # Honor the user's edited destination
+        if edited_dest:
+            dest_path = Path(edited_dest)
+            proposed_filename = dest_path.name
+            proposed_destination = str(dest_path.parent)
+        else:
+            proposed_filename = item.suggested_filename
+            proposed_destination = item.suggested_destination
+
         proposal = OrganizationProposal(
             file_path=item.source_path,
             current_filename=item.current_filename or Path(item.source_path).name,
-            proposed_filename=item.suggested_filename,
-            proposed_destination=item.suggested_destination,
+            proposed_filename=proposed_filename,
+            proposed_destination=proposed_destination,
             reasoning=item.reason,
             confidence=item.confidence,
         )
