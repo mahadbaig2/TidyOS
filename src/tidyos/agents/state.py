@@ -29,13 +29,16 @@ class TidyOSState(TypedDict, total=False):
     guardian_explanation: Optional[str]
     suggested_routing: Optional[str]  # "STOP_PROTECTED" | "REVIEW" | "ELIGIBLE"
 
-    # Future agents state stubs
-    extracted_text: Optional[str]
-    file_type: Optional[str]
+    # Librarian semantic analysis state
+    document_type: Optional[str]
+    title: Optional[str]
     summary: Optional[str]
-    tags: List[str]
-    suggested_filename: Optional[str]
-    suggested_destination: Optional[str]
+    entities: List[str]
+    topics: List[str]
+    suggested_folder: Optional[str]
+    analysis_source: Optional[str]
+    extracted_chars: int
+    is_truncated: bool
     confidence: float
     requires_review: bool
 
