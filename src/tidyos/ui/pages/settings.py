@@ -83,6 +83,7 @@ class SettingsPage(QWidget):
 
     scan_requested = Signal(object)  # Emits ManagedRoot or None (for all)
     roots_changed = Signal()  # Emitted when roots are added or removed
+    reset_demo_requested = Signal()  # Emitted when user wants to reset onboarding tour
 
     def __init__(
         self,
@@ -323,6 +324,40 @@ class SettingsPage(QWidget):
 
         s3_box.addWidget(ai_card)
         layout.addLayout(s3_box)
+
+        # Section 4: Demo & Onboarding Controls
+        s4_box = QVBoxLayout()
+        s4_box.setSpacing(8)
+
+        s4_title = QLabel("Demo & Onboarding")
+        s4_title.setStyleSheet(f"font-size: 15px; font-weight: 600; color: {COLORS.text_primary};")
+        s4_box.addWidget(s4_title)
+
+        demo_card = QFrame()
+        demo_card.setObjectName("Card")
+        demo_card.setStyleSheet(
+            f"""
+            QFrame#Card {{
+                background-color: {COLORS.surface};
+                border: 1px solid {COLORS.border};
+                border-radius: {RADII.lg}px;
+                padding: {SPACING.md}px;
+            }}
+            """
+        )
+        d_layout = QHBoxLayout(demo_card)
+        d_desc = QLabel("Reset the onboarding tour and re-run the workspace introduction flow.")
+        d_desc.setStyleSheet(f"font-size: 13px; color: {COLORS.text_secondary};")
+        d_layout.addWidget(d_desc, 1)
+
+        self.reset_tour_btn = QPushButton("Reset Onboarding Tour")
+        self.reset_tour_btn.setObjectName("BtnSecondary")
+        self.reset_tour_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reset_tour_btn.clicked.connect(self.reset_demo_requested.emit)
+        d_layout.addWidget(self.reset_tour_btn)
+
+        s4_box.addWidget(demo_card)
+        layout.addLayout(s4_box)
 
         # Load active provider configuration into UI
         initial_cfg = get_active_ai_config(self.repository)

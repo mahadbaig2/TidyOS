@@ -1035,4 +1035,37 @@ class StorageRepository:
             cur.execute("DELETE FROM preferences WHERE key = ?", (key,))
             return cur.rowcount > 0
 
+    def is_first_run_completed(self) -> bool:
+        """Check whether the user has completed the onboarding flow."""
+        val = self.get_preference("onboarding_completed", "false")
+        return str(val).lower() in ("true", "1", "yes")
+
+    def set_first_run_completed(self, completed: bool = True) -> None:
+        """Persist onboarding completion status."""
+        self.set_preference("onboarding_completed", "true" if completed else "false")
+
+    def clear_all_data(self) -> None:
+        """Purge all indexed files, folders, roots, reviews, actions, embeddings, and FTS tables."""
+        conn = self.get_connection()
+        with conn:
+            cur = conn.cursor()
+            for table in [
+                "action_records",
+                "review_queue",
+                "file_embeddings",
+                "file_understandings",
+                "files",
+                "directories",
+                "protected_roots",
+                "managed_roots",
+            ]:
+                try:
+                    cur.execute(f"DELETE FROM {table}")
+                except Exception:
+                    pass
+            try:
+                cur.execute("DELETE FROM files_fts")
+            except Exception:
+                pass
+
 

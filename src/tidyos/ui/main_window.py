@@ -35,6 +35,7 @@ from tidyos.ui.pages import (
     ActivityPage,
     SettingsPage,
 )
+from tidyos.ui.onboarding.wizard import OnboardingWizard
 from tidyos.logging_config import get_logger
 
 logger = get_logger("ui.main_window")
@@ -166,7 +167,44 @@ class MainWindow(QMainWindow):
         if config.watcher_enabled:
             self.watcher_manager.start_watching()
 
+        # Initialize Onboarding Wizard
+        self.onboarding_wizard = OnboardingWizard(
+            repository=self.repository,
+            safety_policy=self.safety_policy,
+            mutation_service=self.mutation_service,
+            parent=self,
+        )
+        self.stack.addWidget(self.onboarding_wizard)
+        self.onboarding_wizard.completed.connect(self._on_onboarding_completed)
+        self.settings_page.reset_demo_requested.connect(self._on_reset_demo_requested)
+
+        # First Run check
+        if not self.repository.is_first_run_completed():
+            self.sidebar.hide()
+            self.stack.setCurrentWidget(self.onboarding_wizard)
+        else:
+            self.sidebar.show()
+            self.navigate_to("home")
+
         logger.info("MainWindow initialized with real SQLite storage repository, mutation service, and watcher.")
+
+    def _on_onboarding_completed(self):
+        """User completed first-run onboarding."""
+        self.sidebar.show()
+        self.navigate_to("home")
+        self.home_page.refresh_metrics()
+        self.review_page.refresh_queue()
+        self.organize_page.refresh_page()
+        self.activity_page.refresh_ledger()
+        if config.watcher_enabled and not self.watcher_manager.is_watching():
+            self.watcher_manager.start_watching()
+
+    def _on_reset_demo_requested(self):
+        """Reset onboarding state and re-launch onboarding wizard."""
+        self.repository.set_first_run_completed(False)
+        self.sidebar.hide()
+        self.stack.setCurrentWidget(self.onboarding_wizard)
+        self.onboarding_wizard.stack.setCurrentIndex(0)
 
     def _on_watch_review_needed(self, filename: str, dest: str):
         """Notification when watcher routes an arrived file to the review queue."""
