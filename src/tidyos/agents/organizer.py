@@ -76,21 +76,53 @@ class OrganizationProposal(BaseModel):
         return str(Path(self.proposed_destination) / self.proposed_filename)
 
 
+def _extract_date_snippet(text: str) -> str:
+    """Extract a concise date string from text if present (e.g. September_2026, 2026_09)."""
+    if not text:
+        return ""
+    # Month Name + Year (e.g. September 2026, Sep 2026)
+    m = re.search(
+        r"\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s_\-,]+(\d{4})\b",
+        text,
+        re.IGNORECASE,
+    )
+    if m:
+        month = m.group(1).capitalize()
+        months_map = {
+            "Jan": "January", "Feb": "February", "Mar": "March", "Apr": "April",
+            "Jun": "June", "Jul": "July", "Aug": "August", "Sep": "September",
+            "Oct": "October", "Nov": "November", "Dec": "December",
+        }
+        month = months_map.get(month, month)
+        year = m.group(2)
+        return f"{month}_{year}"
+
+    # ISO date YYYY-MM-DD or YYYY-MM
+    m = re.search(r"\b(20\d{2})[_\-](\d{2})(?:[_\-](\d{2}))?\b", text)
+    if m:
+        if m.group(3):
+            return f"{m.group(1)}_{m.group(2)}_{m.group(3)}"
+        return f"{m.group(1)}_{m.group(2)}"
+
+    # Year only (e.g. 2026)
+    m = re.search(r"\b(20\d{2})\b", text)
+    if m:
+        return m.group(1)
+
+    return ""
+
+
 class OrganizerAgent:
     """Organizer Agent advising file destinations based on semantic understanding and existing folder structures.
 
-    HARD ARCHITECTURAL INVARIANT:
-    OrganizerAgent is purely ADVISORY. It has ZERO filesystem mutation authority.
-    It returns OrganizationProposal objects for review or SafetyPolicy validation.
+    CRITICAL INVARIANT:
+    The Organizer Agent has ZERO mutation authority. It produces only immutable
+    OrganizationProposal objects that must be authorized by SafetyPolicy and
+    executed exclusively by MutationService.
     """
 
-    def __init__(
-        self,
-        repository: Optional[StorageRepository] = None,
-        confidence_threshold: float = 0.85,
-    ):
+    def __init__(self, repository: Optional[StorageRepository] = None):
         self.repository = repository
-        self.confidence_threshold = confidence_threshold
 
     def propose(
         self,
@@ -98,13 +130,14 @@ class OrganizerAgent:
         understanding: Optional[FileUnderstanding] = None,
         candidate_roots: Optional[List[str]] = None,
     ) -> OrganizationProposal:
-        """Evaluate a file and generate an advisory organization proposal."""
+        """Evaluate a file and produce an advisory OrganizationProposal."""
         path_obj = Path(file_path)
         current_filename = path_obj.name
         ext = path_obj.suffix.lower()
+
         signals: List[str] = []
 
-        # 1. Inspect existing folder structures in managed roots
+        # 1. Fetch available existing folder paths for context
         existing_folders = self._get_existing_folders(candidate_roots)
 
         # 2. Extract semantic signals from understanding
@@ -112,6 +145,7 @@ class OrganizerAgent:
         title = understanding.title if understanding else ""
         entities = understanding.entities if understanding else []
         topics = understanding.topics if understanding else []
+        summary = understanding.summary if understanding else ""
         suggested_folder = understanding.suggested_folder if understanding else ""
         lib_conf = understanding.confidence if understanding else 0.5
 
@@ -122,7 +156,7 @@ class OrganizerAgent:
         if topics:
             signals.append(f"topics:{','.join(topics[:3])}")
 
-        # 3. Formulate Windows-safe proposed filename
+        # 3. Formulate Windows-safe proposed filename prioritizing semantic signals
         proposed_filename = self._generate_filename(
             current_filename=current_filename,
             title=title,
@@ -130,6 +164,8 @@ class OrganizerAgent:
             doc_type=doc_type,
             ext=ext,
             signals=signals,
+            summary=summary,
+            topics=topics,
         )
 
         # 4. Resolve best destination (Existing Organization First)
@@ -214,40 +250,75 @@ class OrganizerAgent:
         doc_type: str,
         ext: str,
         signals: List[str],
+        summary: str = "",
+        topics: Optional[List[str]] = None,
     ) -> str:
-        """Synthesize a concise, informative, Windows-safe filename."""
+        """Synthesize a concise, informative, Windows-safe semantic filename."""
         cur_p = Path(current_filename)
         cur_stem = cur_p.stem
 
-        # Detect generic default filenames (e.g. document (17), invoice (1), download, image_001)
-        is_generic = bool(
-            re.search(r"^(document|file|download|invoice|untitled|screenshot|scan|image)[\s_\-\(\)\d]*$", cur_stem, re.IGNORECASE)
+        generic_pattern = r"^(document|file|download|invoice|untitled|screenshot|scan|image|resume|receipt|paper|presentation|notes)[\s_\-\(\)\d_finalcopyv]*$"
+
+        # Detect generic default filenames (e.g. document (17), resume_final_3, invoice (1), download, image_001)
+        is_cur_generic = bool(
+            re.search(generic_pattern, cur_stem, re.IGNORECASE)
             or cur_stem.isdigit()
             or len(cur_stem) <= 3
         )
 
-        if not is_generic and len(cur_stem) > 5:
-            # If the user's filename is already descriptive, sanitize and preserve its core naming
+        # 1. If user's existing filename is already specific and non-generic, preserve it
+        if not is_cur_generic and len(cur_stem) > 5:
             return sanitize_windows_filename(current_filename, ext)
 
-        # Synthesize from title if available and meaningful
-        if title and title.lower() not in {"untitled", "unknown document", "document", "image"}:
-            signals.append("filename_from_title")
-            return sanitize_windows_filename(title, ext)
+        # Detect generic titles (e.g. "Document (17)", "Resume Final 3", "Untitled")
+        is_title_generic = (
+            not title
+            or bool(re.search(generic_pattern, title.strip(), re.IGNORECASE))
+            or title.strip().lower() in {"untitled", "unknown document", "document", "image", "file", "missing", "resume"}
+            or len(title.strip()) <= 3
+        )
 
-        # Synthesize from entities + doc_type
-        parts = []
+        # 2. If title is strong, informative, and non-generic, use it directly
+        if not is_title_generic:
+            clean_title = sanitize_windows_filename(title, ext)
+            if len(clean_title) > 5 and not bool(re.search(generic_pattern, Path(clean_title).stem, re.IGNORECASE)):
+                signals.append("filename_from_semantic_title")
+                return clean_title
+
+        # 3. Synthesize semantic name from Entities + Document Type + Date / Topics
+        components: List[str] = []
+
+        # Entity component
         if entities:
-            parts.append(entities[0].replace(" ", "_"))
-        if doc_type and doc_type not in {"unknown", "data"}:
-            parts.append(doc_type.capitalize())
+            clean_entity = re.sub(r"\s+(?:Inc|Corp|LLC|Ltd|Technologies|Company)\.?$", "", entities[0], flags=re.IGNORECASE).strip()
+            clean_entity = re.sub(r"[^\w\s\-]", "", clean_entity).strip()
+            clean_entity = re.sub(r"[\s\-]+", "_", clean_entity)
+            if clean_entity:
+                components.append(clean_entity)
+        elif topics:
+            clean_topic = re.sub(r"[^\w\s\-]", "", topics[0]).strip().replace(" ", "_").title().replace(" ", "_")
+            if clean_topic and clean_topic.lower() not in {"data", "other", "general"}:
+                components.append(clean_topic)
 
-        if parts:
-            signals.append("filename_from_entities")
-            return sanitize_windows_filename("_".join(parts), ext)
+        # Document type component
+        if doc_type and doc_type not in {"unknown", "data", "document", "other", "missing"}:
+            formatted_type = doc_type.replace("_", " ").title().replace(" ", "_")
+            if not components or formatted_type.lower() not in components[0].lower():
+                components.append(formatted_type)
 
-        # Fallback to sanitized current filename
-        return sanitize_windows_filename(current_filename, ext)
+        # Date component
+        date_snip = _extract_date_snippet(f"{title} {summary}")
+        if date_snip:
+            components.append(date_snip)
+
+        if components:
+            signals.append("filename_from_semantic_synthesis")
+            synthesized = "_".join(components)
+            return sanitize_windows_filename(synthesized, ext)
+
+        # 4. Fallback
+        fallback_name = f"{doc_type.capitalize()}_{date_snip}" if doc_type != "unknown" and date_snip else current_filename
+        return sanitize_windows_filename(fallback_name, ext)
 
     def _resolve_destination(
         self,
