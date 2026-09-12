@@ -5,11 +5,18 @@ from tidyos.agents.guardian import (
     GuardianAgent,
     GuardianExplanation,
 )
+from tidyos.agents.librarian import (
+    FileUnderstanding,
+    LibrarianAgent,
+)
 from tidyos.agents.graph import create_safety_graph
 
 __all__ = [
     "TidyOSState",
     "GuardianAgent",
     "GuardianExplanation",
+    "FileUnderstanding",
+    "LibrarianAgent",
     "create_safety_graph",
 ]
+
