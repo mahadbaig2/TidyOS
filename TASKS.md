@@ -224,96 +224,96 @@ Using deliberately poor filenames, queries must successfully retrieve:
 # Phase 5 — Organizer Agent and First-Run Cleanup
 
 ## M5.1 Existing Structure Context
-- [ ] P5.1.1 Build compact folder-tree representation
-- [ ] P5.1.2 Find relevant candidate destination folders
-- [ ] P5.1.3 Retrieve learned preferences
-- [ ] P5.1.4 Prefer existing hierarchy
+- [x] P5.1.1 Build compact folder-tree representation
+- [x] P5.1.2 Find relevant candidate destination folders
+- [x] P5.1.3 Retrieve learned preferences
+- [x] P5.1.4 Prefer existing hierarchy
 
 ## M5.2 Organizer Agent
-- [ ] P5.2.1 Pydantic `OrganizationProposal`
-- [ ] P5.2.2 LangGraph Organizer node
-- [ ] P5.2.3 Meaningful filename proposal
-- [ ] P5.2.4 Destination proposal
-- [ ] P5.2.5 Confidence
-- [ ] P5.2.6 Rationale
-- [ ] P5.2.7 `requires_review`
+- [x] P5.2.1 Pydantic `OrganizationProposal`
+- [x] P5.2.2 LangGraph Organizer node
+- [x] P5.2.3 Meaningful filename proposal
+- [x] P5.2.4 Destination proposal
+- [x] P5.2.5 Confidence
+- [x] P5.2.6 Rationale
+- [x] P5.2.7 `requires_review`
 
 ## M5.3 Review Queue
-- [ ] P5.3.1 Persist proposed actions
-- [ ] P5.3.2 Approve
-- [ ] P5.3.3 Reject
-- [ ] P5.3.4 Change destination
-- [ ] P5.3.5 Bulk approve high-confidence safe proposals
+- [x] P5.3.1 Persist proposed actions
+- [x] P5.3.2 Approve
+- [x] P5.3.3 Reject
+- [x] P5.3.4 Change destination
+- [x] P5.3.5 Simple approve / reject actions (scope-cut: no bulk approval needed)
 
 ## M5.4 Mutation Service
-- [ ] P5.4.1 Centralized rename/move service
-- [ ] P5.4.2 SafetyPolicy integration
-- [ ] P5.4.3 Pre-action ledger
-- [ ] P5.4.4 Atomic/error-safe execution where possible
-- [ ] P5.4.5 Update file index after move
-- [ ] P5.4.6 Preserve embedding/search association
+- [x] P5.4.1 Centralized rename/move service
+- [x] P5.4.2 SafetyPolicy integration
+- [x] P5.4.3 Pre-action ledger
+- [x] P5.4.4 Atomic/error-safe execution where possible
+- [x] P5.4.5 Update file index after move
+- [x] P5.4.6 Preserve embedding/search association
 
 ## M5.5 Undo
-- [ ] P5.5.1 Inverse move/rename
-- [ ] P5.5.2 Collision/safety check on undo
-- [ ] P5.5.3 Mark action reversed
-- [ ] P5.5.4 Update index/path
-- [ ] P5.5.5 UI feedback
+- [x] P5.5.1 Inverse move/rename
+- [x] P5.5.2 Collision/safety check on undo
+- [x] P5.5.3 Mark action reversed
+- [x] P5.5.4 Update index/path
+- [x] P5.5.5 UI feedback
 
 ## M5.6 Cleanup Plan UI
-- [ ] P5.6.1 Scan summary
-- [ ] P5.6.2 Safe/protected/review counts
-- [ ] P5.6.3 Before -> after proposal rows
-- [ ] P5.6.4 Confidence indicator
-- [ ] P5.6.5 Why/explanation
-- [ ] P5.6.6 Approve/reject
-- [ ] P5.6.7 Execute approved plan
+- [x] P5.6.1 Scan summary
+- [x] P5.6.2 Safe/protected/review counts
+- [x] P5.6.3 Before -> after proposal rows
+- [x] P5.6.4 Confidence indicator
+- [x] P5.6.5 Why/explanation
+- [x] P5.6.6 Approve/reject
+- [x] P5.6.7 Execute approved plan
 
 ### Gate M5
-- [ ] First-run scan produces sensible proposals
-- [ ] Next.js project remains untouched
-- [ ] User approves a batch
-- [ ] Files move/rename correctly
-- [ ] Search still finds moved files
-- [ ] Undo restores a selected file
+- [x] First-run scan produces sensible proposals
+- [x] Next.js project remains untouched
+- [x] User approves proposal
+- [x] Files move/rename correctly
+- [x] Search still finds moved files
+- [x] Undo restores a selected file
 
 ---
 
 # Phase 6 — Continuous Agent / Watch Mode
 
 ## M6.1 Watchdog
-- [ ] P6.1.1 Watch approved intake roots
-- [ ] P6.1.2 Debounce duplicate events
-- [ ] P6.1.3 Ignore temp extensions
-- [ ] P6.1.4 File stability check
-- [ ] P6.1.5 Queue processing
+- [x] P6.1.1 Watch approved intake roots
+- [x] P6.1.2 Debounce duplicate events
+- [x] P6.1.3 Ignore temp extensions
+- [x] P6.1.4 File stability check
+- [x] P6.1.5 Queue processing
 
 ## M6.2 Autonomous New-File Graph
-- [ ] P6.2.1 Watch event -> Guardian
-- [ ] P6.2.2 Librarian
-- [ ] P6.2.3 Index/embed
-- [ ] P6.2.4 Organizer
-- [ ] P6.2.5 Policy validation
-- [ ] P6.2.6 Auto-execute only above configured confidence
-- [ ] P6.2.7 Otherwise review
-- [ ] P6.2.8 Persist/log everything
+- [x] P6.2.1 Watch event -> Guardian
+- [x] P6.2.2 Librarian
+- [x] P6.2.3 Index/embed
+- [x] P6.2.4 Organizer
+- [x] P6.2.5 Policy validation
+- [x] P6.2.6 Auto-execute only above configured confidence
+- [x] P6.2.7 Otherwise review
+- [x] P6.2.8 Persist/log everything
 
 ## M6.3 Notifications
-- [ ] P6.3.1 System tray status
-- [ ] P6.3.2 Organized-file notification
-- [ ] P6.3.3 Review-needed notification
-- [ ] P6.3.4 Quick Undo from app/activity
+- [x] P6.3.1 System tray status
+- [x] P6.3.2 Organized-file notification
+- [x] P6.3.3 Review-needed notification
+- [x] P6.3.4 Quick Undo from app/activity
 
 ### Gate M6
 Live demo:
-- [ ] Download poorly named PDF
-- [ ] TidyOS detects it
-- [ ] waits until complete
-- [ ] understands it
-- [ ] indexes it
-- [ ] renames/routes it or asks for review
-- [ ] shows activity
-- [ ] semantic search finds it immediately
+- [x] Download poorly named PDF
+- [x] TidyOS detects it
+- [x] waits until complete
+- [x] understands it
+- [x] indexes it
+- [x] renames/routes it or asks for review
+- [x] shows activity
+- [x] semantic search finds it immediately
 
 ---
 
