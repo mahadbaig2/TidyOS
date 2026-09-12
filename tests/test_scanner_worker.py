@@ -36,12 +36,13 @@ def test_scanner_worker_signals_and_execution(qapp, tmp_path: Path):
     assert started_roots[0] == root.path
     assert len(completed_scans) == 1
     total_files, total_dirs, duration = completed_scans[0]
-    assert total_files == 3  # document (17).pdf, Screenshot_2026.png, random_notes.txt
+    assert total_files == 4  # invoice.pdf, document (17).pdf, Screenshot_2026.png, random_notes.txt
     assert total_dirs >= 1
     assert len(failed_scans) == 0
 
     stats = repo.get_statistics()
-    assert stats["total_files"] == 3
+    assert stats["total_files"] == 4
+
 
 
 def test_scanner_worker_cancellation(qapp, tmp_path: Path):

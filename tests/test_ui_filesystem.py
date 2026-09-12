@@ -36,9 +36,10 @@ def test_ui_managed_roots_and_scan_flow(qapp, tmp_path: Path):
 
     # Verify metrics updated on Home page
     stats_after = repo.get_statistics()
-    assert stats_after["total_files"] == 3
+    assert stats_after["total_files"] == 4
     assert stats_after["total_roots"] == 1
 
-    assert window.home_page.card_indexed.value_label.text() == "3"
+    assert window.home_page.card_indexed.value_label.text() == "4"
     assert "Across 1 approved root" in window.home_page.card_indexed.hint_label.text()
+
 

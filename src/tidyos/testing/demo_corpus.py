@@ -35,6 +35,8 @@ def create_demo_corpus(base_dir: Path | str) -> Dict[str, Path]:
     downloads = root / "Downloads"
     downloads.mkdir(exist_ok=True)
 
+    # Identical invoice in Downloads (Safe to organize)
+    (downloads / "invoice.pdf").write_bytes(DUMMY_PDF_BYTES)
     (downloads / "document (17).pdf").write_bytes(DUMMY_PDF_BYTES)
     (downloads / "Screenshot_2026.png").write_bytes(TINY_PNG_BYTES)
     (downloads / "random_notes.txt").write_text(
@@ -63,7 +65,26 @@ def create_demo_corpus(base_dir: Path | str) -> Dict[str, Path]:
         encoding="utf-8",
     )
     (next_demo / "app").mkdir(exist_ok=True)
-    (next_demo / "public").mkdir(exist_ok=True)
+    next_public = next_demo / "public"
+    next_public.mkdir(exist_ok=True)
+    # Identical invoice inside public/ of Next.js project (Protected from mutation)
+    (next_public / "invoice.pdf").write_bytes(DUMMY_PDF_BYTES)
+
+    # 4. Structured project: Python codebase
+    python_demo = projects / "python-demo"
+    python_demo.mkdir(parents=True, exist_ok=True)
+    (python_demo / "pyproject.toml").write_text(
+        '[project]\nname = "fastapi-service"\nversion = "0.1.0"\n',
+        encoding="utf-8",
+    )
+    (python_demo / "requirements.txt").write_text(
+        "fastapi>=0.110.0\nuvicorn>=0.28.0\n",
+        encoding="utf-8",
+    )
+    (python_demo / "main.py").write_text(
+        "from fastapi import FastAPI\napp = FastAPI()\n",
+        encoding="utf-8",
+    )
 
     return {
         "root": root,
@@ -71,4 +92,6 @@ def create_demo_corpus(base_dir: Path | str) -> Dict[str, Path]:
         "documents": documents,
         "projects": projects,
         "next_demo": next_demo,
+        "python_demo": python_demo,
     }
+
