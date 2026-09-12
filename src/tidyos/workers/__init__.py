@@ -2,10 +2,13 @@
 
 from tidyos.workers.scanner_worker import ScannerWorker, ScannerSignals
 from tidyos.workers.librarian_worker import LibrarianWorker, LibrarianSignals
+from tidyos.workers.indexer_worker import IndexerWorker, IndexerSignals
 
 __all__ = [
     "ScannerWorker",
     "ScannerSignals",
     "LibrarianWorker",
     "LibrarianSignals",
+    "IndexerWorker",
+    "IndexerSignals",
 ]

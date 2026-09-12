@@ -19,6 +19,7 @@ from tidyos.config import config
 from tidyos.storage import StorageRepository, ManagedRoot
 from tidyos.workers.scanner_worker import ScannerWorker
 from tidyos.workers.librarian_worker import LibrarianWorker
+from tidyos.workers.indexer_worker import IndexerWorker
 from tidyos.ui.theme.tokens import COLORS
 from tidyos.ui.components.sidebar import Sidebar
 from tidyos.ui.pages import (
@@ -68,6 +69,7 @@ class MainWindow(QMainWindow):
         self.thread_pool = QThreadPool.globalInstance()
         self.active_worker: Optional[ScannerWorker] = None
         self.active_librarian_worker: Optional[LibrarianWorker] = None
+        self.active_indexer_worker: Optional[IndexerWorker] = None
 
         # Root container
         root_widget = QWidget()
@@ -87,11 +89,12 @@ class MainWindow(QMainWindow):
         self.stack.setObjectName("MainContentArea")
 
         self.home_page = HomePage(repository=self.repository)
+        self.search_page = SearchPage(repository=self.repository)
         self.settings_page = SettingsPage(repository=self.repository)
 
         self.pages: dict[str, QWidget] = {
             "home": self.home_page,
-            "search": SearchPage(),
+            "search": self.search_page,
             "organize": OrganizePage(),
             "review": ReviewPage(),
             "activity": ActivityPage(),
@@ -175,6 +178,25 @@ class MainWindow(QMainWindow):
         self.home_page.hide_understanding_progress(processed, cached, duration_s)
         self.settings_page.show_status_message(
             f"Librarian analyzed {processed:,} files ({cached} cached) in {duration_s:.1f}s."
+        )
+        # Trigger background vector and FTS indexing for newly understood files
+        if processed > 0:
+            self.start_indexing()
+
+    def start_indexing(self):
+        """Start non-blocking vector and FTS indexing across understood files."""
+        logger.info("Initiating background vector and FTS indexing...")
+        worker = IndexerWorker(self.repository)
+        self.active_indexer_worker = worker
+
+        worker.signals.indexing_completed.connect(self._on_indexing_completed)
+        self.thread_pool.start(worker)
+
+    def _on_indexing_completed(self, total_indexed: int, duration_s: float):
+        """Handle completion of background indexing."""
+        logger.info(f"Indexing completed: {total_indexed} files in {duration_s:.2f}s")
+        self.settings_page.show_status_message(
+            f"Search index updated: {total_indexed} files indexed in {duration_s:.1f}s."
         )
 
     def _on_understanding_error(self, file_path: str, error_message: str):
