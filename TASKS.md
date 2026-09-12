@@ -45,35 +45,36 @@ Do not skip milestone gates.
 # Phase 1 — Local Filesystem Core
 
 ## M1.1 Managed Roots
-- [ ] P1.1.1 Implement folder picker
-- [ ] P1.1.2 Persist approved roots in SQLite
-- [ ] P1.1.3 Add AUTO / REVIEW mode per root
-- [ ] P1.1.4 Add exclusions
-- [ ] P1.1.5 Enforce scope checks
+- [x] P1.1.1 Implement folder picker
+- [x] P1.1.2 Persist approved roots in SQLite
+- [x] P1.1.3 Add AUTO / REVIEW mode per root
+- [x] P1.1.4 Add exclusions
+- [x] P1.1.5 Enforce scope checks
 
 ## M1.2 SQLite Schema
-- [ ] P1.2.1 `managed_roots`
-- [ ] P1.2.2 `files`
-- [ ] P1.2.3 `folders`
-- [ ] P1.2.4 `protected_roots`
-- [ ] P1.2.5 `actions`
-- [ ] P1.2.6 `preferences`
-- [ ] P1.2.7 `review_queue`
-- [ ] P1.2.8 `file_text`
-- [ ] P1.2.9 migrations/bootstrap
+- [x] P1.2.1 `managed_roots`
+- [x] P1.2.2 `files`
+- [x] P1.2.3 `folders`
+- [x] P1.2.4 `protected_roots`
+- [x] P1.2.5 `actions`
+- [x] P1.2.6 `preferences`
+- [x] P1.2.7 `review_queue`
+- [x] P1.2.8 `file_text`
+- [x] P1.2.9 migrations/bootstrap
 
 ## M1.3 Scanner
-- [ ] P1.3.1 Recursive directory scan
-- [ ] P1.3.2 File metadata extraction
-- [ ] P1.3.3 MIME/extension handling
-- [ ] P1.3.4 Stable internal file IDs
-- [ ] P1.3.5 Background worker implementation
-- [ ] P1.3.6 Progress signals to UI
+- [x] P1.3.1 Recursive directory scan
+- [x] P1.3.2 File metadata extraction
+- [x] P1.3.3 MIME/extension handling
+- [x] P1.3.4 Stable internal file IDs
+- [x] P1.3.5 Background worker implementation
+- [x] P1.3.6 Progress signals to UI
 
 ### Gate M1
-- [ ] User can select a demo directory
-- [ ] TidyOS indexes paths and metadata without moving anything
-- [ ] UI remains responsive during scan
+- [x] User can select a demo directory
+- [x] TidyOS indexes paths and metadata without moving anything
+- [x] UI remains responsive during scan
+
 
 ---
 
